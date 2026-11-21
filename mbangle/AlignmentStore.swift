@@ -10,11 +10,16 @@ protocol AlignmentSensor: AnyObject {
     /// The unsmoothed sample associated with the latest valid callback.
     /// Cleared when the sensor stops or a read fails.
     var latestRawAngle: Double? { get }
+    /// Monotonic time when acquisition began, so delayed delivery cannot refresh old data.
+    var latestSampleTime: TimeInterval? { get }
     func start()
     func stop()
 }
 
-extension LidAngleSensor: AlignmentSensor {}
+extension AlignmentSensor {
+    /// Synchronous test inputs can use the receiving store's injected clock.
+    var latestSampleTime: TimeInterval? { nil }
+}
 
 /// Shared state for the alignment tray and momentary title feedback.
 /// The sensor runs only while at least one of those presentations is active.
@@ -44,7 +49,7 @@ final class AlignmentStore: ObservableObject {
         automaticallyMonitorFreshness: Bool = true
     ) {
         self.defaults = defaults
-        self.sensor = sensor ?? LidAngleSensor()
+        self.sensor = sensor ?? NativeAngleSensor()
         self.now = now
         self.automaticallyMonitorFreshness = automaticallyMonitorFreshness
         isSensorAvailable = self.sensor.isAvailable
@@ -74,7 +79,14 @@ final class AlignmentStore: ObservableObject {
                 self.invalidateReading()
                 return
             }
-            self.lastReadingAt = self.now()
+            let receivedAt = self.now()
+            let sampledAt = self.sensor.latestSampleTime ?? receivedAt
+            guard sampledAt.isFinite, sampledAt <= receivedAt,
+                  receivedAt - sampledAt < Self.readingLifetime else {
+                self.invalidateReading()
+                return
+            }
+            self.lastReadingAt = sampledAt
             self.isSensorAvailable = true
             self.angle = 180 - reading
         }

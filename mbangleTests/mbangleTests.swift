@@ -111,6 +111,28 @@ final class mbangleTests: XCTestCase {
         }
     }
 
+    func testDelayedDeliveryKeepsTheOriginalFreshnessDeadline() {
+        withClockedStore { store, sensor, clock, defaults in
+            store.show()
+            sensor.latestSampleTime = clock.time - 0.75
+            sensor.send(104)
+            XCTAssertTrue(store.isOnTarget)
+            clock.time += 0.26
+            store.setCurrentAsTarget()
+            XCTAssertFalse(store.hasReading)
+            XCTAssertNil(defaults.object(forKey: "targetAngle"))
+
+            for invalidTime in [clock.time - 2, clock.time + 1, .nan, .infinity] {
+                sensor.latestSampleTime = invalidTime
+                sensor.send(104)
+                XCTAssertFalse(store.hasReading)
+            }
+            sensor.latestSampleTime = clock.time
+            sensor.send(104)
+            XCTAssertTrue(store.isOnTarget)
+        }
+    }
+
     func testStoredZeroIsAValidTargetAcrossLaunches() {
         withStore { store, sensor, defaults in
             store.show()
@@ -448,6 +470,7 @@ private final class TestSensor: AlignmentSensor {
     var onAngle: ((Double?) -> Void)?
     var isAvailable = true
     private(set) var latestRawAngle: Double?
+    var latestSampleTime: TimeInterval?
     private(set) var starts = 0
     private(set) var stops = 0
 

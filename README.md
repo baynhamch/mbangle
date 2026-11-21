@@ -30,10 +30,10 @@ Previously saved targets are preserved when updating the app. To choose a differ
 
 1. Move the MacBook lid to the physical position you want to save.
 2. Focus the showcase window and press **`⌃⌥⇧L`** to open the alignment tray. Alternatively, hold Option and click the small line at the bottom of the window.
-3. Let the lid settle, then choose **Set current angle** or press **C**. Calibration saves the latest valid whole-degree sensor reading, rather than the smoothed display value.
+3. Let the lid settle, then choose **Set current angle** or press **C**. Calibration rounds and saves the latest valid raw sensor reading, rather than the smoothed display value.
 4. Press **Escape** to close the tray. Hold Option whenever you want to check alignment against that position.
 
-The saved target persists across launches. The default and minimum tolerance is **±0.5°**. Targets use whole degrees, matching the raw readings exposed by the current sensor implementation. Red fill grows across a 10° approach range and retains a small 8% fill when farther away; green means the smoothed reading is within tolerance. The tray also gives written “Open lid” or “Close lid” guidance.
+The saved target persists across launches. The default and minimum tolerance is **±0.5°**. Targets use whole degrees, matching the raw readings from the observed Mac sensor profile. Red fill grows across a 10° approach range and retains a small 8% fill when farther away; green means the smoothed reading is within tolerance. The tray also gives written “Open lid” or “Close lid” guidance.
 
 | Control | Action |
 | --- | --- |
@@ -70,9 +70,11 @@ Previously saved tolerances below 0.5°, or invalid values, are repaired to 0.5�
 
 When no supported sensor is found, the tray shows **Sensor unavailable**. A failed or invalid read immediately clears the angle and green feedback. If samples stop arriving, a one-second freshness limit prevents the old reading from being used for alignment or calibration.
 
-While feedback is open, the app retries sensor discovery at most once per second. Recovery starts with a new reading, without blending in the pre-failure angle. Closing all feedback stops polling and retries and closes the sensor connection. Sleep dismisses feedback; the next reveal after waking reconnects from scratch. Missing readings never become simulated values.
+While feedback is open, failed sensor discovery is retried at most once per second. Recovery starts with a new reading, without blending in the pre-failure angle. Hardware discovery, reads, and cleanup run on a dedicated serial worker. Closing all feedback immediately clears the interface and stops new polling and retries; any already-running read can finish before cleanup, but its result is discarded. Sleep dismisses feedback; the next reveal after waking starts a new session. Missing readings never become simulated values.
 
-The live decimal display comes from smoothing whole-degree samples; it does not add sensor resolution. Target adjustments and saved calibration use whole degrees.
+The live reader uses macOS HID element metadata and a forced value update, with no fixed report-buffer decoder. It recognizes the measured `las` sensor profile and a limited standardized hinge-angle profile; support on additional Mac models still needs hardware verification. See [sensor design and provenance](docs/SENSOR_DESIGN.md).
+
+On the observed Mac sensor profile, the live decimal display comes from smoothing whole-degree samples; it does not add sensor resolution. Other recognized descriptors can express fractional degrees through unit conversion. Target adjustments and saved calibration use whole degrees, rounding the latest raw reading when saving.
 
 ## Showcase content
 
@@ -88,13 +90,13 @@ Product descriptions, prices, and lease wording are **demonstration content from
 | [`ShowcaseView.swift`](mbangle/ShowcaseView.swift) | Product layout, detail sheets, hidden handle, and calibration tray |
 | [`AlignmentTitleView.swift`](mbangle/AlignmentTitleView.swift) | Title-masked red/green feedback |
 | [`AlignmentStore.swift`](mbangle/AlignmentStore.swift) | Calibration, angle conversion, feedback state, and polling lifecycle |
-| [`LidAngleSensor.swift`](mbangle/LidAngleSensor.swift) | IOKit HID discovery and smoothed sensor readings |
+| [`NativeAngleSensor.swift`](mbangle/NativeAngleSensor.swift) | Background HID element discovery, reading, unit conversion, and session handling |
 | [`AppDelegate.swift`](mbangle/AppDelegate.swift) | Window-local keyboard handling and lifecycle cleanup |
 | [`mbangleTests.swift`](mbangleTests/mbangleTests.swift) | Hardware-independent model tests |
 
 ## Tests
 
-The model tests use injected sensors, HID transports, clocks, and isolated preferences. They cover calibration persistence, the 104° → 76° conversion, whole-degree target migration, raw-sample calibration while smoothing is still settling, target reacquisition after restart, adjustment bounds, direction and tolerance, title fill, and overlapping tray/Option-hold lifetimes. Failure tests cover stale readings, blocked stale calibration, unavailable devices, throttled reconnection, smoothing reset, and stopping all work when feedback closes.
+The model tests use injected sensors, source factories, clocks, and isolated preferences. They cover calibration persistence, the 104° → 76° conversion, whole-degree target migration, raw-sample calibration, adjustment bounds, direction and tolerance, title fill, and overlapping tray/Option-hold lifetimes. Worker tests exercise delayed and failed reads, session cancellation, reconnection, serialization, and metadata conversion. Freshness follows the acquisition time, so delayed delivery cannot renew an old reading's calibration deadline.
 
 The UI tests launch explicit Debug-only sensor fixtures with isolated preferences. They exercise the first-launch 76° target, unavailable hardware, calibration, keyboard controls, tray dismissal, and accessible title feedback during Option hold/release without depending on the host Mac's sensor. A relaunch check verifies that fixture target changes do not persist. Normal launches always use real sensor discovery; Release builds do not include the UI-test fixtures.
 
@@ -112,6 +114,6 @@ These tests exercise the app's logic without requiring a lid-angle sensor. Befor
 
 ## Acknowledgments
 
-Sam Gold's [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor) inspired the live angle-sensing integration. The sensor reader is also adapted from his Apache-2.0-licensed implementation. This credit identifies the source of that component; it does not imply collaboration or endorsement.
+Sam Gold's [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor) inspired the initial prototype, which included an adapted reader. The current app uses a replacement developed from Apple SDK interfaces, USB HID specifications, and direct device inspection. The old reader has been removed from the current app sources; earlier versions remain credited in Git history. This acknowledgment does not imply collaboration or endorsement.
 
 The showcase interface, calibration controls, and title feedback were developed for mbangle. See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution and license details.
