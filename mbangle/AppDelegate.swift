@@ -10,6 +10,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         return AlignmentStore()
     }()
+    let feedback: AlignmentFeedback = {
+        #if DEBUG
+        if let fixture = UITestConfiguration.makeFeedbackIfRequested() { return fixture }
+        #endif
+        return AlignmentFeedback()
+    }()
     private var keyMonitor: Any?
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var sleepObserver: NSObjectProtocol?
@@ -20,9 +26,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard let self, NSApp.isActive,
                   self.isShowcaseWindow(NSApp.keyWindow),
                   NSApp.keyWindow?.attachedSheet == nil else { return }
-            // Request the performer each time: macOS chooses the current device
-            // and honors its settings. A Force Touch trackpad requires contact.
-            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+            self.feedback.confirmAlignment()
         }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             guard let self else { return event }

@@ -87,6 +87,54 @@ final class mbangleUITests: XCTestCase {
         assertText("76.0°", in: element("live-angle", in: app))
     }
 
+    func testFeedbackSettingsToggleIndependentlyAndFixturePreferencesStayIsolated() {
+        let app = launch(sensor: "unavailable")
+        defer { app.terminate() }
+        openSettings(in: app)
+
+        let sound = element("feedback-sound-toggle", in: app)
+        let haptics = element("feedback-haptics-toggle", in: app)
+        let preview = app.buttons["feedback-preview"]
+        assertToggle(sound, isOn: true)
+        assertToggle(haptics, isOn: true)
+        XCTAssertTrue(preview.isEnabled)
+
+        sound.click()
+        assertToggle(sound, isOn: false)
+        assertToggle(haptics, isOn: true)
+        XCTAssertTrue(preview.isEnabled, "Trackpad-only feedback remains available.")
+        haptics.click()
+        assertToggle(haptics, isOn: false)
+        assertEventually(NSPredicate(format: "enabled == false"), for: preview)
+
+        sound.click()
+        assertToggle(sound, isOn: true)
+        assertToggle(haptics, isOn: false)
+        assertEventually(NSPredicate(format: "enabled == true"), for: preview)
+        preview.click() // Automation fixtures inject silent outputs for this action.
+        sound.click()
+        assertToggle(sound, isOn: false)
+        assertEventually(NSPredicate(format: "enabled == false"), for: preview)
+
+        // Closing settings must retain choices for the running app instance.
+        app.typeKey("w", modifierFlags: [.command])
+        assertGone(sound)
+        focusShowcase(in: app)
+        openSettings(in: app)
+        assertToggle(sound, isOn: false)
+        assertToggle(haptics, isOn: false)
+        XCTAssertFalse(preview.isEnabled)
+
+        // Fixture preferences are intentionally in-memory, never the user's defaults.
+        app.terminate()
+        app.launch()
+        focusShowcase(in: app)
+        openSettings(in: app)
+        assertToggle(sound, isOn: true)
+        assertToggle(haptics, isOn: true)
+        XCTAssertTrue(preview.isEnabled)
+    }
+
     private func launch(sensor: String) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--mbangle-ui-testing"]
@@ -107,6 +155,23 @@ final class mbangleUITests: XCTestCase {
     private func openTray(in app: XCUIApplication) {
         app.typeKey("l", modifierFlags: [.control, .option, .shift])
         XCTAssertTrue(element("alignment-tray", in: app).waitForExistence(timeout: 5))
+    }
+
+    private func openSettings(in app: XCUIApplication) {
+        app.typeKey(",", modifierFlags: [.command])
+        XCTAssertTrue(element("feedback-sound-toggle", in: app).waitForExistence(timeout: 5))
+    }
+
+    private func assertToggle(_ element: XCUIElement, isOn: Bool,
+                              file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(element.waitForExistence(timeout: 5), file: file, line: line)
+        let predicate = NSPredicate { object, _ in
+            guard let toggle = object as? XCUIElement else { return false }
+            if let number = toggle.value as? NSNumber { return number.boolValue == isOn }
+            if let text = toggle.value as? String { return text == (isOn ? "1" : "0") }
+            return false
+        }
+        assertEventually(predicate, for: element, file: file, line: line)
     }
 
     private func element(_ identifier: String, in app: XCUIApplication) -> XCUIElement {

@@ -33,7 +33,7 @@ final class AlignmentStore: ObservableObject {
     @Published private(set) var isSensorAvailable: Bool
 
     /// Emitted once when fresh raw and displayed readings settle on target.
-    /// The app decides whether its current window can deliver a haptic.
+    /// The app decides whether its current window can deliver sound or a haptic.
     var onAlignmentReached: (() -> Void)?
 
     private let defaults: UserDefaults

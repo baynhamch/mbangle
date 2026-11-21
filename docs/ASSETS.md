@@ -1,4 +1,20 @@
-# Visual assets
+# App assets
+
+## Confirmation tick
+
+`mbangle/Resources/AlignmentTick.wav` is an original synthesized confirmation
+sound: 80 ms, mono, 16-bit PCM at 44.1 kHz. Three damped tones, a smooth attack,
+and a tapered tail create a short tick without clipped samples or abrupt edges.
+It contains no third-party recording or copied system sound.
+
+Regenerate it from the repository root with:
+
+```sh
+swift tools/generate-confirmation-tick.swift
+```
+
+The app loads the bundled sound once and plays it asynchronously at reduced
+volume. Sound can be disabled independently of trackpad feedback in Settings.
 
 ## App icon
 

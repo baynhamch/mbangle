@@ -13,5 +13,10 @@ struct mbangleApp: App {
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 1260, height: 800)
         .windowResizability(.contentMinSize)
+
+        Settings {
+            FeedbackSettingsView(feedback: delegate.feedback)
+        }
+        .windowResizability(.contentSize)
     }
 }

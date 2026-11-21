@@ -4,7 +4,7 @@ An independent native macOS prototype that demonstrates discreet lid-angle align
 
 Hold **Option (`⌥`)** while the showcase window is focused. A muted red fill moves through “MacBook Air 15″” as the lid approaches its saved position, then turns fully green within tolerance. Release Option and the title returns to normal. A hidden calibration tray provides the live angle, target, and adjustment controls.
 
-On a Force Touch trackpad, a short alignment tap can also confirm the position.
+An optional quiet tick and a short trackpad tap can also confirm the position.
 Rest a finger on the trackpad while adjusting the lid; macOS suppresses this
 feedback when the trackpad is not being touched and may suppress it according
 to the current input device or system settings.
@@ -52,12 +52,19 @@ The saved target persists across launches. The default and minimum tolerance is 
 
 Moving focus away from the showcase or opening a detail sheet clears alignment feedback. Polling runs only while the title feedback or calibration tray is active. Releasing Option keeps polling active if the tray is still open.
 
-The haptic confirmation uses Apple's public
+Open **mbangle → Settings…** (**⌘,**) to switch **Confirmation sound** and
+**Trackpad tap** on or off independently. Both start enabled, and your choices
+persist across launches. **Try feedback** previews only the enabled cues; it is
+disabled when both are off. The sound is an original 80 ms tick played quietly
+through the current audio output, following its volume and mute setting.
+Turning either cue off leaves the visual alignment feedback available.
+
+The trackpad confirmation uses Apple's public
 [`NSHapticFeedbackManager` alignment pattern](https://developer.apple.com/documentation/appkit/nshapticfeedbackmanager/feedbackpattern/alignment).
-It requests one short tap after both the raw and smoothed readings stay within
+Automatic sound and trackpad feedback share one confirmation event after both the raw and smoothed readings stay within
 tolerance for at least 150 ms. It rearms after moving more than 0.5° beyond the
 tolerance boundary, or starting a new feedback session, with a 750 ms minimum
-interval between taps. This prevents repeated taps from small fluctuations.
+interval between requests. This prevents repeated cues from small fluctuations.
 Feedback is limited to the focused showcase while Option feedback or the tray
 is active. The system decides whether to deliver a request; see Apple's
 [trackpad-contact limitation](https://developer.apple.com/documentation/appkit/nshapticfeedbackperformer/perform(_:performancetime:)).
@@ -74,6 +81,8 @@ Settings are stored locally in macOS `UserDefaults` under `com.nconanthiley.mban
 | --- | --- | --- |
 | `targetAngle` | Saved target in whole raw sensor degrees | 104° raw / 76° displayed |
 | `toleranceDegrees` | Allowed difference from the target, minimum 0.5° | 0.5° |
+| `alignmentSoundEnabled` | Play the confirmation tick | On |
+| `alignmentHapticsEnabled` | Request the trackpad alignment tap | On |
 
 To change tolerance, quit the app, run the following, then reopen it:
 
@@ -106,6 +115,8 @@ Product descriptions, prices, and lease wording are **demonstration content from
 | [`AlignmentTitleView.swift`](mbangle/AlignmentTitleView.swift) | Title-masked red/green feedback |
 | [`AlignmentStore.swift`](mbangle/AlignmentStore.swift) | Calibration, angle conversion, feedback state, and polling lifecycle |
 | [`AlignmentHapticGate.swift`](mbangle/AlignmentHapticGate.swift) | Stable alignment confirmation, repeat suppression, and haptic cooldown |
+| [`AlignmentFeedback.swift`](mbangle/AlignmentFeedback.swift) | Saved sound/trackpad preferences and output routing |
+| [`FeedbackSettingsView.swift`](mbangle/FeedbackSettingsView.swift) | Native Settings switches and feedback preview |
 | [`NativeAngleSensor.swift`](mbangle/NativeAngleSensor.swift) | Background HID element discovery, reading, unit conversion, and session handling |
 | [`AppDelegate.swift`](mbangle/AppDelegate.swift) | Window-local keyboard handling and lifecycle cleanup |
 | [`mbangleTests.swift`](mbangleTests/mbangleTests.swift) | Hardware-independent model tests |

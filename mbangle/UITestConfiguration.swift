@@ -4,6 +4,13 @@ import Foundation
 /// Explicit automation fixtures. This entire implementation is absent from Release builds.
 @MainActor
 enum UITestConfiguration {
+    static func makeFeedbackIfRequested() -> AlignmentFeedback? {
+        guard ProcessInfo.processInfo.arguments.contains("--mbangle-ui-testing") else { return nil }
+        // UI automation changes only this in-memory store and never plays sounds
+        // or trackpad feedback on the host machine.
+        return AlignmentFeedback(defaults: MemoryUITestDefaults(), playSound: {}, performHaptic: {})
+    }
+
     static func makeStoreIfRequested() -> AlignmentStore? {
         let process = ProcessInfo.processInfo
         guard process.arguments.contains("--mbangle-ui-testing") else { return nil }
@@ -48,7 +55,7 @@ enum UITestConfiguration {
 }
 
 /// Only this test store's dictionary is read or written; calibration never reaches a defaults domain.
-private nonisolated final class MemoryUITestDefaults: UserDefaults, @unchecked Sendable {
+private nonisolated final class MemoryUITestDefaults: UserDefaults {
     private let lock = NSLock()
     // Empty preferences exercise the same first-launch defaults as the real app.
     private var values: [String: Any] = [:]
@@ -71,6 +78,10 @@ private nonisolated final class MemoryUITestDefaults: UserDefaults, @unchecked S
     }
 
     override func set(_ value: Double, forKey defaultName: String) {
+        lock.withLock { values[defaultName] = value }
+    }
+
+    override func set(_ value: Bool, forKey defaultName: String) {
         lock.withLock { values[defaultName] = value }
     }
 
