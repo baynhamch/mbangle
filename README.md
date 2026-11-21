@@ -139,8 +139,10 @@ xcodebuild \
 
 These tests exercise the app's logic without requiring a lid-angle sensor. Before presenting, rehearse on the intended MacBook: calibrate, move the lid away and back while holding Option, release it, switch apps, and repeat after sleep/wake. A passing automated test does not verify physical sensor accuracy.
 
-## Acknowledgments
+## Implementation
 
-Sam Gold's [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor) inspired the initial prototype, which included an adapted reader. The current app uses a replacement developed from Apple SDK interfaces, USB HID specifications, and direct device inspection. The old reader has been removed from the current app sources; earlier versions remain credited in Git history. This acknowledgment does not imply collaboration or endorsement.
-
-The showcase interface, calibration controls, and title feedback were developed for mbangle. See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution and license details.
+The live reader was developed from Apple SDK interfaces, USB HID specifications,
+and direct device inspection. The showcase interface, calibration controls,
+alignment feedback, icon, and confirmation tick were developed for mbangle.
+See [sensor design](docs/SENSOR_DESIGN.md) for the implementation details and
+[third-party notices](THIRD_PARTY_NOTICES.md) for asset and historical license information.

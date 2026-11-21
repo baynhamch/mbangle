@@ -84,10 +84,9 @@ reader do not establish those results for the new one.
 
 ## Prototype history
 
-Earlier commits used an adaptation of Sam Gold's `LidAngleSensor` project. That
-component has been replaced in the current app sources. The earlier commits
-remain in Git history, with their attribution and Apache 2.0 license retained
-in [third-party notices](../THIRD_PARTY_NOTICES.md).
+This reader replaced the prototype's earlier sensor component. Historical
+implementation provenance and licenses are recorded in
+[third-party notices](../THIRD_PARTY_NOTICES.md); earlier commits remain in Git history.
 
 This document records implementation provenance. It is not a legal ownership
 determination or approval to deploy the app at Apple.
