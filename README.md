@@ -61,11 +61,15 @@ To change tolerance, quit the app, run the following, then reopen it:
 defaults write com.nconanthiley.mbangle toleranceDegrees -float 0.3
 ```
 
-When no supported sensor is found, the tray shows **Sensor unavailable**. Until a valid reading arrives, it shows a dash and cannot save the current angle. Missing or invalid readings never become simulated values, and no title fill appears without a valid reading.
+When no supported sensor is found, the tray shows **Sensor unavailable**. A failed or invalid read immediately clears the angle and green feedback. If samples stop arriving, a one-second freshness limit prevents the old reading from being used for alignment or calibration.
+
+While feedback is open, the app retries sensor discovery at most once per second. Recovery starts with a new reading, without blending in the pre-failure angle. Closing all feedback stops polling and retries and closes the sensor connection. Sleep dismisses feedback; the next reveal after waking reconnects from scratch. Missing readings never become simulated values.
+
+The decimal display and 0.1° target steps are interface precision, not a claim of 0.1° hardware measurement accuracy.
 
 ## Showcase content
 
-The layout uses native SwiftUI text, cards, detail sheets, and controls. The supplied reference image is used for the laptop photography inside the main card.
+The layout uses native SwiftUI text, cards, detail sheets, and controls. The main card uses bundled, higher-resolution Apple product photography. The app icon is an original angle mark. See [asset sources](docs/ASSETS.md).
 
 Product descriptions, prices, and lease wording are **demonstration content from the supplied reference**, not a live offer or catalog. Pricing, comparison, upgrade, and disclaimer cards open local detail sheets. The finish dots are a static legend. There is no checkout, account, networking, or telemetry; sensor readings and calibration stay on the Mac.
 
@@ -85,7 +89,7 @@ Product descriptions, prices, and lease wording are **demonstration content from
 
 ## Tests
 
-The 15 model tests use an injected sensor and isolated preferences. They cover calibration persistence, the 104° → 76° conversion, adjustment bounds, direction and tolerance, invalid readings, title fill, and overlapping tray/Option-hold lifetimes.
+The tests use injected sensors, HID transports, clocks, and isolated preferences. They cover calibration persistence, the 104° → 76° conversion, adjustment bounds, direction and tolerance, title fill, and overlapping tray/Option-hold lifetimes. Failure tests cover stale readings, blocked stale calibration, unavailable devices, throttled reconnection, smoothing reset, and stopping all work when feedback closes.
 
 Run the `mbangleTests` target in Xcode, or from the repository root:
 
@@ -98,7 +102,7 @@ xcodebuild \
   test
 ```
 
-These tests exercise the app's logic without requiring a lid-angle sensor. Hardware availability and live readings still require checking on the intended MacBook.
+These tests exercise the app's logic without requiring a lid-angle sensor. Before presenting, rehearse on the intended MacBook: calibrate, move the lid away and back while holding Option, release it, switch apps, and repeat after sleep/wake. A passing automated test does not verify physical sensor accuracy.
 
 ## Acknowledgments
 

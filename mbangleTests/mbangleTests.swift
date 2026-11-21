@@ -11,7 +11,104 @@ final class mbangleTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let sensor = TestSensor()
         let store = AlignmentStore(defaults: defaults, sensor: sensor)
+        defer { store.dismiss() }
         try body(store, sensor, defaults)
+    }
+
+    private func withClockedStore(
+        _ body: (AlignmentStore, TestSensor, TestClock, UserDefaults) -> Void
+    ) {
+        let suiteName = "mbangle.freshness-tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let sensor = TestSensor()
+        let clock = TestClock()
+        let store = AlignmentStore(
+            defaults: defaults, sensor: sensor, now: { clock.time },
+            automaticallyMonitorFreshness: false
+        )
+        defer { store.dismiss() }
+        body(store, sensor, clock, defaults)
+    }
+
+    func testReadFailureImmediatelyClearsGreenFeedbackAndBlocksCalibration() {
+        withClockedStore { store, sensor, _, defaults in
+            store.show()
+            store.beginPeek()
+            sensor.send(130)
+            XCTAssertTrue(store.isOnTarget)
+            XCTAssertEqual(store.titleFillFraction, 1)
+            sensor.fail()
+            XCTAssertNil(store.angle)
+            XCTAssertFalse(store.hasReading)
+            XCTAssertFalse(store.isOnTarget)
+            XCTAssertEqual(store.titleFillFraction, 0)
+            XCTAssertEqual(store.correction, "Sensor unavailable")
+            store.setCurrentAsTarget()
+            XCTAssertNil(defaults.object(forKey: "targetAngle"))
+        }
+    }
+
+    func testSilenceExpiresTheReadingAndClearsPublishedAngle() {
+        withClockedStore { store, sensor, clock, _ in
+            store.beginPeek()
+            sensor.send(130)
+            clock.time += 0.99
+            store.refreshReadingValidity()
+            XCTAssertTrue(store.isOnTarget)
+            clock.time += 0.02
+            // Computed feedback is already invalid even before the timer fires.
+            XCTAssertFalse(store.hasReading)
+            XCTAssertFalse(store.isOnTarget)
+            XCTAssertEqual(store.titleFillFraction, 0)
+            store.refreshReadingValidity()
+            XCTAssertNil(store.angle)
+            XCTAssertFalse(store.isSensorAvailable)
+        }
+    }
+
+    func testCalibrationCannotSaveAnExpiredReadingBeforeWatchdogFires() {
+        withClockedStore { store, sensor, clock, defaults in
+            store.show()
+            sensor.send(104)
+            clock.time += AlignmentStore.readingLifetime
+            store.setCurrentAsTarget()
+            XCTAssertEqual(store.target, 50)
+            XCTAssertNil(defaults.object(forKey: "targetAngle"))
+            XCTAssertNil(store.angle)
+        }
+    }
+
+    func testRecoveredSensorRestoresFeedbackWithoutReopeningTray() {
+        withClockedStore { store, sensor, clock, _ in
+            store.show()
+            store.beginPeek()
+            sensor.send(130)
+            sensor.fail()
+            clock.time += 3
+            sensor.isAvailable = true
+            sensor.send(130)
+            XCTAssertTrue(store.isExpanded)
+            XCTAssertTrue(store.isSensorAvailable)
+            XCTAssertTrue(store.isOnTarget)
+            XCTAssertEqual(store.titleFillFraction, 1)
+            XCTAssertEqual(sensor.starts, 1)
+        }
+    }
+
+    func testEachValidReadingRefreshesTheFreshnessDeadline() {
+        withClockedStore { store, sensor, clock, _ in
+            store.beginPeek()
+            sensor.send(130)
+            clock.time += 0.8
+            sensor.send(130)
+            clock.time += 0.8
+            store.refreshReadingValidity()
+            XCTAssertTrue(store.isOnTarget)
+            clock.time += 0.3
+            store.refreshReadingValidity()
+            XCTAssertFalse(store.isOnTarget)
+        }
     }
 
     func testStoredZeroIsAValidTargetAcrossLaunches() {
@@ -263,8 +360,13 @@ final class mbangleTests: XCTestCase {
 }
 
 @MainActor
+private final class TestClock {
+    var time: TimeInterval = 100
+}
+
+@MainActor
 private final class TestSensor: AlignmentSensor {
-    var onAngle: ((Double) -> Void)?
+    var onAngle: ((Double?) -> Void)?
     var isAvailable = true
     private(set) var starts = 0
     private(set) var stops = 0
@@ -272,4 +374,8 @@ private final class TestSensor: AlignmentSensor {
     func start() { starts += 1 }
     func stop() { stops += 1 }
     func send(_ reading: Double) { onAngle?(reading) }
+    func fail() {
+        isAvailable = false
+        onAngle?(nil)
+    }
 }

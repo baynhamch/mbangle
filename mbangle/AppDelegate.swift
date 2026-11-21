@@ -7,6 +7,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let alignment = AlignmentStore()
     private var keyMonitor: Any?
     private var lifecycleObservers: [NSObjectProtocol] = []
+    private var sleepObserver: NSObjectProtocol?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
@@ -40,6 +41,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 }
             })
         }
+        // Drop pre-sleep values and close the HID device. The next deliberate
+        // reveal after wake starts a new discovery/read session.
+        sleepObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.willSleepNotification, object: nil, queue: .main
+        ) { [weak self] _ in
+            MainActor.assumeIsolated { self?.alignment.dismiss() }
+        }
         NSApp.activate(ignoringOtherApps: true)
     }
 
@@ -47,6 +55,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         alignment.dismiss()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         lifecycleObservers.forEach(NotificationCenter.default.removeObserver)
+        if let sleepObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(sleepObserver)
+        }
     }
 
     private func isShowcaseWindow(_ window: NSWindow?) -> Bool {

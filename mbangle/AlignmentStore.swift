@@ -4,7 +4,8 @@ import Foundation
 /// A small seam for exercising calibration without depending on MacBook hardware.
 @MainActor
 protocol AlignmentSensor: AnyObject {
-    var onAngle: ((Double) -> Void)? { get set }
+    /// A nil sample immediately invalidates the previous reading.
+    var onAngle: ((Double?) -> Void)? { get set }
     var isAvailable: Bool { get }
     func start()
     func stop()
@@ -25,10 +26,22 @@ final class AlignmentStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let sensor: any AlignmentSensor
+    private let now: () -> TimeInterval
+    private let automaticallyMonitorFreshness: Bool
+    private var lastReadingAt: TimeInterval?
+    private var freshnessTimer: Timer?
+    static let readingLifetime: TimeInterval = 1
 
-    init(defaults: UserDefaults = .standard, sensor: (any AlignmentSensor)? = nil) {
+    init(
+        defaults: UserDefaults = .standard,
+        sensor: (any AlignmentSensor)? = nil,
+        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        automaticallyMonitorFreshness: Bool = true
+    ) {
         self.defaults = defaults
         self.sensor = sensor ?? LidAngleSensor()
+        self.now = now
+        self.automaticallyMonitorFreshness = automaticallyMonitorFreshness
         isSensorAvailable = self.sensor.isAvailable
 
         // Preserve the saved target in the original sensor convention so existing
@@ -42,34 +55,43 @@ final class AlignmentStore: ObservableObject {
 
         self.sensor.onAngle = { [weak self] reading in
             guard let self, self.needsReadings else { return }
-            guard self.isSensorAvailable, reading.isFinite,
+            guard self.sensor.isAvailable, let reading, reading.isFinite,
                   (0...180).contains(reading) else {
-                self.angle = nil
+                self.invalidateReading()
                 return
             }
+            self.lastReadingAt = self.now()
+            self.isSensorAvailable = true
             self.angle = 180 - reading
         }
     }
 
-    var hasReading: Bool { angle != nil }
+    deinit {
+        freshnessTimer?.invalidate()
+    }
+
+    var hasReading: Bool {
+        guard angle != nil, isSensorAvailable, let lastReadingAt else { return false }
+        return now() - lastReadingAt < Self.readingLifetime
+    }
 
     var isOnTarget: Bool {
-        guard let angle else { return false }
+        guard hasReading, let angle else { return false }
         return abs(angle - target) <= tolerance
     }
 
     /// The title fills as the lid approaches its saved target, reaching full width
     /// anywhere inside tolerance. It is absent unless the peek key is held.
     var titleFillFraction: Double {
-        guard isPeeking, isSensorAvailable, let angle else { return 0 }
+        guard isPeeking, hasReading, let angle else { return 0 }
         if isOnTarget { return 1 }
         let distanceOutsideTolerance = max(0, abs(angle - target) - tolerance)
         return min(1, max(0.08, 1 - distanceOutsideTolerance / 10))
     }
 
     var correction: String {
-        guard let angle else {
-            return isSensorAvailable ? "Waiting for sensor…" : "Sensor unavailable"
+        guard hasReading, let angle else {
+            return isSensorAvailable && lastReadingAt == nil ? "Waiting for sensor…" : "Sensor unavailable"
         }
         if isOnTarget { return "On target" }
         // Opening the lid increases its raw sensor angle and decreases the
@@ -122,8 +144,17 @@ final class AlignmentStore: ObservableObject {
     }
 
     func setCurrentAsTarget() {
-        guard isExpanded, let angle else { return }
+        refreshReadingValidity()
+        guard isExpanded, hasReading, let angle else { return }
         saveTarget(angle)
+    }
+
+    /// Also checked synchronously before calibration, so a delayed timer can
+    /// never make an old reading eligible to save.
+    func refreshReadingValidity() {
+        guard needsReadings, let lastReadingAt,
+              now() - lastReadingAt >= Self.readingLifetime else { return }
+        invalidateReading()
     }
 
     private var needsReadings: Bool { isExpanded || isPeeking }
@@ -131,14 +162,31 @@ final class AlignmentStore: ObservableObject {
     private func startIfNeeded(wasActive: Bool) {
         guard !wasActive else { return }
         angle = nil
+        lastReadingAt = nil
         isSensorAvailable = sensor.isAvailable
+        if automaticallyMonitorFreshness {
+            let timer = Timer(timeInterval: 0.2, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshReadingValidity() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            freshnessTimer = timer
+        }
         sensor.start()
     }
 
     private func stopIfInactive() {
         guard !needsReadings else { return }
+        freshnessTimer?.invalidate()
+        freshnessTimer = nil
         sensor.stop()
         angle = nil
+        lastReadingAt = nil
+    }
+
+    private func invalidateReading() {
+        angle = nil
+        lastReadingAt = nil
+        isSensorAvailable = false
     }
 
     private func saveTarget(_ value: Double) {

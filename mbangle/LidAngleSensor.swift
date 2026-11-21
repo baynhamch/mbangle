@@ -4,7 +4,7 @@
 //
 //  Reads the MacBook lid angle sensor over IOKit HID.
 //  Adapted from Sam Gold's LidAngleSensor (Apache-2.0).
-//  Modified for angle-only reporting, smoothing, and on-demand polling.
+//  Modified for angle-only reporting, smoothing, on-demand polling, and recovery.
 //  See THIRD_PARTY_NOTICES.md and licenses/LidAngleSensor-LICENSE.txt.
 //
 
@@ -12,118 +12,197 @@ import Foundation
 import IOKit
 import IOKit.hid
 
-/// Polls the lid angle sensor and reports smoothed angle readings to a callback.
-///
-/// Polling only runs between `start()` and `stop()` so the app is completely
-/// idle while the HUD is hidden.
+/// Owns one connection. A failed connection or read must never produce a sample.
+@MainActor
+protocol LidAngleTransport: AnyObject {
+    func connect() -> Bool
+    func readAngle() -> Double?
+    func disconnect()
+}
+
+/// Polls only while requested, and retries unavailable hardware at a bounded rate.
+@MainActor
 final class LidAngleSensor: NSObject {
-
-    /// Called on the main thread with each new smoothed angle, in degrees.
-    var onAngle: ((Double) -> Void)?
-
+    /// Availability is updated before every callback. Nil invalidates the last sample.
+    var onAngle: ((Double?) -> Void)?
     private(set) var isAvailable = false
 
-    private var hidDevice: IOHIDDevice?
+    private let transport: any LidAngleTransport
+    private let clock: () -> TimeInterval
+    private let schedulesTimer: Bool
     private var timer: Timer?
-
-    /// Light exponential smoothing to settle the last-digit jitter in the raw
-    /// report. Heavier smoothing would lag the lid while you are moving it.
+    private var isRunning = false
+    private var isConnected = false
+    private var nextRetryAt: TimeInterval = 0
     private var smoothedAngle: Double?
+
     private static let smoothingFactor = 0.35
     private static let pollInterval = 1.0 / 30.0
-    private static let noOptions = IOOptionBits(kIOHIDOptionsTypeNone)
+    private static let retryInterval: TimeInterval = 1
 
-    override init() {
-        hidDevice = Self.findSensor()
+    init(
+        transport: (any LidAngleTransport)? = nil,
+        clock: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        schedulesTimer: Bool = true
+    ) {
+        self.transport = transport ?? IOKitLidAngleTransport()
+        self.clock = clock
+        self.schedulesTimer = schedulesTimer
         super.init()
-        if let hidDevice {
-            IOHIDDeviceOpen(hidDevice, Self.noOptions)
-        }
-        isAvailable = hidDevice != nil
     }
 
     deinit {
         timer?.invalidate()
-        if let hidDevice {
-            IOHIDDeviceClose(hidDevice, Self.noOptions)
-        }
     }
 
-    // MARK: - Control
-
     func start() {
-        guard isAvailable, timer == nil else { return }
+        guard !isRunning else { return }
+        isRunning = true
+        nextRetryAt = clock()
         smoothedAngle = nil
-        // Target/selector rather than a closure: Timer's block variant is
-        // @Sendable and would force this non-Sendable class across an isolation
-        // boundary it never actually crosses (the timer is main-run-loop only).
-        let timer = Timer(
-            timeInterval: Self.pollInterval,
-            target: self,
-            selector: #selector(poll),
-            userInfo: nil,
-            repeats: true
-        )
-        // .common so the reading keeps updating while a menu or drag is tracking.
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
+
+        if schedulesTimer {
+            // Weak capture avoids a Timer -> sensor -> Timer ownership cycle.
+            let timer = Timer(timeInterval: Self.pollInterval, repeats: true) { [weak self] _ in
+                MainActor.assumeIsolated { self?.poll() }
+            }
+            RunLoop.main.add(timer, forMode: .common)
+            self.timer = timer
+        }
         poll()
     }
 
     func stop() {
+        guard isRunning else { return }
+        isRunning = false
         timer?.invalidate()
         timer = nil
+        transport.disconnect()
+        isConnected = false
+        smoothedAngle = nil
+        nextRetryAt = 0
+        publish(nil)
     }
 
-    // MARK: - Polling
+    /// Internal so transport failures and retry timing can be checked deterministically.
+    func poll() {
+        guard isRunning else { return }
+        let now = clock()
 
-    @objc private func poll() {
-        guard let hidDevice, let raw = Self.readAngle(from: hidDevice) else { return }
-
-        let smoothed: Double
-        if let previous = smoothedAngle {
-            smoothed = Self.smoothingFactor * raw + (1 - Self.smoothingFactor) * previous
-        } else {
-            smoothed = raw
+        if !isConnected {
+            guard now >= nextRetryAt else { return }
+            guard transport.connect() else {
+                fail(at: now)
+                return
+            }
+            isConnected = true
         }
+
+        guard let raw = transport.readAngle(), raw.isFinite, (0...180).contains(raw) else {
+            fail(at: now)
+            return
+        }
+
+        let smoothed = smoothedAngle.map {
+            Self.smoothingFactor * raw + (1 - Self.smoothingFactor) * $0
+        } ?? raw
         smoothedAngle = smoothed
-        onAngle?(smoothed)
+        publish(smoothed)
     }
 
-    private static func readAngle(from device: IOHIDDevice) -> Double? {
-        var report = [UInt8](repeating: 0, count: 8)
-        var length = CFIndex(report.count)
-
-        let result = IOHIDDeviceGetReport(device, kIOHIDReportTypeFeature, 1, &report, &length)
-        guard result == kIOReturnSuccess, length >= 3 else { return nil }
-
-        return Double(UInt16(report[2]) << 8 | UInt16(report[1]))
+    private func fail(at time: TimeInterval) {
+        transport.disconnect()
+        isConnected = false
+        smoothedAngle = nil
+        nextRetryAt = time + Self.retryInterval
+        publish(nil)
     }
 
-    // MARK: - Discovery
+    private func publish(_ sample: Double?) {
+        isAvailable = sample != nil
+        onAngle?(sample)
+    }
+}
 
-    private static func findSensor() -> IOHIDDevice? {
-        let manager = IOHIDManagerCreate(kCFAllocatorDefault, noOptions)
-        guard IOHIDManagerOpen(manager, noOptions) == kIOReturnSuccess else { return nil }
-        defer { IOHIDManagerClose(manager, noOptions) }
+/// The supported feature report carries its little-endian angle in bytes 1 and 2.
+/// Keep this boundary separate from smoothing so malformed reports cannot enter it.
+@MainActor
+enum LidAngleReport {
+    static func decode(_ report: [UInt8], length: Int) -> Double? {
+        guard length >= 3, length <= report.count else { return nil }
+        let angle = Double(UInt16(report[2]) << 8 | UInt16(report[1]))
+        return (0...180).contains(angle) ? angle : nil
+    }
+}
 
+@MainActor
+private final class IOKitLidAngleTransport: LidAngleTransport {
+    private var manager: IOHIDManager?
+    private var device: IOHIDDevice?
+    private var probeSample: Double?
+    private static let noOptions = IOOptionBits(kIOHIDOptionsTypeNone)
+
+    deinit {
+        if let device { IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone)) }
+        if let manager { IOHIDManagerClose(manager, IOOptionBits(kIOHIDOptionsTypeNone)) }
+    }
+
+    func connect() -> Bool {
+        disconnect()
+        let candidateManager = IOHIDManagerCreate(kCFAllocatorDefault, Self.noOptions)
         let matching: [String: Any] = [
             kIOHIDVendorIDKey as String: 0x05AC,
             kIOHIDProductIDKey as String: 0x8104,
             "UsagePage": 0x0020,
             "Usage": 0x008A,
         ]
-        IOHIDManagerSetDeviceMatching(manager, matching as CFDictionary)
-
-        guard let devices = IOHIDManagerCopyDevices(manager) as? Set<IOHIDDevice> else { return nil }
-
-        // Several devices can match; keep the first that actually answers a report.
-        for device in devices {
-            guard IOHIDDeviceOpen(device, noOptions) == kIOReturnSuccess else { continue }
-            defer { IOHIDDeviceClose(device, noOptions) }
-            if readAngle(from: device) != nil { return device }
+        IOHIDManagerSetDeviceMatching(candidateManager, matching as CFDictionary)
+        guard IOHIDManagerOpen(candidateManager, Self.noOptions) == kIOReturnSuccess else {
+            return false
+        }
+        guard let devices = IOHIDManagerCopyDevices(candidateManager) as? Set<IOHIDDevice> else {
+            IOHIDManagerClose(candidateManager, Self.noOptions)
+            return false
         }
 
-        return nil
+        for candidate in devices {
+            guard IOHIDDeviceOpen(candidate, Self.noOptions) == kIOReturnSuccess else { continue }
+            if let sample = Self.readReport(from: candidate) {
+                // Retain the successful open connection and probe sample. Closing
+                // and reopening here would create another point of failure.
+                manager = candidateManager
+                device = candidate
+                probeSample = sample
+                return true
+            }
+            IOHIDDeviceClose(candidate, Self.noOptions)
+        }
+        IOHIDManagerClose(candidateManager, Self.noOptions)
+        return false
+    }
+
+    func readAngle() -> Double? {
+        if let sample = probeSample {
+            probeSample = nil
+            return sample
+        }
+        guard let device else { return nil }
+        return Self.readReport(from: device)
+    }
+
+    func disconnect() {
+        probeSample = nil
+        if let device { IOHIDDeviceClose(device, Self.noOptions) }
+        if let manager { IOHIDManagerClose(manager, Self.noOptions) }
+        device = nil
+        manager = nil
+    }
+
+    private static func readReport(from device: IOHIDDevice) -> Double? {
+        var report = [UInt8](repeating: 0, count: 8)
+        var length = CFIndex(report.count)
+        let result = IOHIDDeviceGetReport(device, kIOHIDReportTypeFeature, 1, &report, &length)
+        guard result == kIOReturnSuccess else { return nil }
+        return LidAngleReport.decode(report, length: length)
     }
 }

@@ -15,4 +15,5 @@ while alignment feedback or calibration is active.
 
 The repository's existing [MIT license](LICENSE) is retained for original mbangle
 code. Third-party code remains subject to its own license. The supplied showcase
-image and Apple product marks are not relicensed by the source-code license.
+reference, bundled Apple product photograph, and Apple product marks are not
+relicensed by the source-code license. Image provenance is in [docs/ASSETS.md](docs/ASSETS.md).

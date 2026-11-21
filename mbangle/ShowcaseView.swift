@@ -7,8 +7,8 @@ private enum ShowcaseStyle {
     static let secondary = Color(red: 0.43, green: 0.43, blue: 0.45)
 }
 
-/// The reference is rebuilt as native views. Only the laptop photography is
-/// sampled from the supplied image; text, cards, sheets and controls are native.
+/// Product text, cards, sheets and controls are native views. The main card uses
+/// bundled high-resolution photography; see docs/ASSETS.md for its source.
 struct ShowcaseView: View {
     @ObservedObject var alignment: AlignmentStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -123,7 +123,7 @@ struct ShowcaseView: View {
                 Button { detail = .pricing } label: {
                     VStack(spacing: 0) {
                         Spacer(minLength: 10)
-                        ReferenceLaptopView()
+                        ProductLaptopView()
                             .frame(maxWidth: 410)
                             .padding(.horizontal, compact ? 24 : 50)
                         Spacer(minLength: 10)
@@ -213,17 +213,16 @@ struct ShowcaseView: View {
     }
 }
 
-/// A view crop keeps the original attachment intact. Replace this view's asset
-/// with dedicated product photography when it is available.
-private struct ReferenceLaptopView: View {
-    private let crop = CGRect(x: 270, y: 290, width: 400, height: 270)
+/// Crop the whitespace in the unmodified product asset at render time.
+private struct ProductLaptopView: View {
+    private let crop = CGRect(x: 330, y: 455, width: 1145, height: 773)
     var body: some View {
         GeometryReader { geometry in
             let scale = geometry.size.width / crop.width
-            Image("ShowcaseReference")
+            Image("MacBookAir")
                 .resizable()
                 .interpolation(.high)
-                .frame(width: 1280 * scale, height: 806 * scale)
+                .frame(width: 1808 * scale, height: 1680 * scale)
                 .offset(x: -crop.minX * scale, y: -crop.minY * scale)
         }
         .aspectRatio(crop.width / crop.height, contentMode: .fit)
