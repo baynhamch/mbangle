@@ -38,8 +38,10 @@ are approximately x 388–1423 and y 527–1156 in the original image's top-left
 coordinate system. A view crop of x 330, y 455, width 1145, height 773 leaves a
 small white margin around the full laptop.
 
-Apple owns the product photograph. It is included as a visual reference for the
-internal showcase concept, separately from the original app icon and app code.
+Apple owns the product photograph. It is included as a visual reference for this
+independent demonstration, separately from the original app icon and app code.
+Attribution does not establish permission to redistribute the photograph, and
+the source-code license does not cover it or Apple's product marks.
 
 ## Supplied reference
 

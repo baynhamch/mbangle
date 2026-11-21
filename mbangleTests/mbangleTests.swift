@@ -130,10 +130,69 @@ final class mbangleTests: XCTestCase {
             XCTAssertEqual(store.target, 180)
             store.adjustTarget(by: -200)
             XCTAssertEqual(store.target, 0)
-            store.adjustTarget(by: 0.1)
-            XCTAssertEqual(defaults.double(forKey: "targetAngle"), 179.9, accuracy: 0.0001)
+            store.adjustTarget(by: 1)
+            XCTAssertEqual(defaults.double(forKey: "targetAngle"), 179)
             let restored = AlignmentStore(defaults: defaults, sensor: TestSensor())
-            XCTAssertEqual(restored.target, 0.1, accuracy: 0.0001)
+            XCTAssertEqual(restored.target, 1)
+        }
+    }
+
+    func testMissingPreferencesUseDefaultsWithoutWritingCalibrationOrTolerance() {
+        withStore { store, _, defaults in
+            XCTAssertEqual(store.target, 50)
+            XCTAssertEqual(store.tolerance, 0.5)
+            XCTAssertNil(defaults.object(forKey: "targetAngle"))
+            XCTAssertNil(defaults.object(forKey: "toleranceDegrees"))
+        }
+    }
+
+    func testFractionalTargetsMigrateOnceInRawSpaceIncludingTiesAndBounds() {
+        withStore { _, _, defaults in
+            let cases: [(saved: Double, raw: Double)] = [
+                (103.65, 104), (104.35, 104), (104.5, 105), (104, 104),
+                (0.5, 1), (179.5, 180), (0, 0), (180, 180), (-10, 0), (200, 180)
+            ]
+            for value in cases {
+                defaults.set(value.saved, forKey: "targetAngle")
+                let migrated = AlignmentStore(defaults: defaults, sensor: TestSensor())
+                XCTAssertEqual(migrated.target, 180 - value.raw)
+                XCTAssertEqual(defaults.double(forKey: "targetAngle"), value.raw)
+                if (0...180).contains(value.saved) {
+                    XCTAssertLessThanOrEqual(abs(value.raw - value.saved), 0.5)
+                }
+                let relaunched = AlignmentStore(defaults: defaults, sensor: TestSensor())
+                XCTAssertEqual(relaunched.target, migrated.target)
+                XCTAssertEqual(defaults.double(forKey: "targetAngle"), value.raw)
+            }
+        }
+    }
+
+    func testInvalidSavedTargetsAreRepairedToTheDefaultRawCalibration() {
+        withStore { _, _, defaults in
+            let invalidValues: [Any] = [Double.nan, Double.infinity, "invalid"]
+            for invalid in invalidValues {
+                defaults.set(invalid, forKey: "targetAngle")
+                let restored = AlignmentStore(defaults: defaults, sensor: TestSensor())
+                XCTAssertEqual(restored.target, 50)
+                XCTAssertEqual(defaults.double(forKey: "targetAngle"), 130)
+            }
+        }
+    }
+
+    func testFractionalAdjustmentsCannotStoreFractionalTargetsAndTiesUseRawSpace() {
+        withStore { _, _, defaults in
+            defaults.set(104, forKey: "targetAngle")
+            let store = AlignmentStore(defaults: defaults, sensor: TestSensor())
+            store.adjustTarget(by: 0.1)
+            XCTAssertEqual(store.target, 76)
+            XCTAssertEqual(defaults.double(forKey: "targetAngle"), 104)
+            // Displayed 75.5 corresponds to raw 104.5, which rounds up to 105.
+            store.adjustTarget(by: -0.5)
+            XCTAssertEqual(store.target, 75)
+            XCTAssertEqual(defaults.double(forKey: "targetAngle"), 105)
+            store.adjustTarget(by: 0.6)
+            XCTAssertEqual(store.target, 76)
+            XCTAssertEqual(defaults.double(forKey: "targetAngle"), 104)
         }
     }
 
@@ -216,16 +275,35 @@ final class mbangleTests: XCTestCase {
         }
     }
 
-    func testSavedToleranceAndInvalidSettings() {
+    func testSubminimumAndInvalidTolerancesAreRepairedAndPersisted() {
         withStore { _, _, defaults in
-            defaults.set(0.2, forKey: "toleranceDegrees")
-            defaults.set(200, forKey: "targetAngle")
-            let restored = AlignmentStore(defaults: defaults, sensor: TestSensor())
-            XCTAssertEqual(restored.tolerance, 0.2)
-            XCTAssertEqual(restored.target, 0)
-            defaults.set(-1, forKey: "toleranceDegrees")
-            let repaired = AlignmentStore(defaults: defaults, sensor: TestSensor())
-            XCTAssertEqual(repaired.tolerance, 0.5)
+            let invalidValues: [Any] = [0.3, 0.2, 0, -1, Double.nan, Double.infinity, "invalid"]
+            for invalid in invalidValues {
+                defaults.set(invalid, forKey: "toleranceDegrees")
+                let repaired = AlignmentStore(defaults: defaults, sensor: TestSensor())
+                XCTAssertEqual(repaired.tolerance, 0.5)
+                XCTAssertEqual(defaults.double(forKey: "toleranceDegrees"), 0.5)
+            }
+            for valid in [0.5, 1.25] {
+                defaults.set(valid, forKey: "toleranceDegrees")
+                let restored = AlignmentStore(defaults: defaults, sensor: TestSensor())
+                XCTAssertEqual(restored.tolerance, valid)
+                XCTAssertEqual(defaults.double(forKey: "toleranceDegrees"), valid)
+            }
+        }
+    }
+
+    func testCalibrationRequiresAValidRawSampleEvenWhenDisplayIsFresh() {
+        withStore { store, sensor, defaults in
+            store.show()
+            let invalidSamples: [Double?] = [nil, Double.nan, Double.infinity, -1, 181]
+            for invalid in invalidSamples {
+                sensor.send(104, rawAngle: invalid)
+                XCTAssertTrue(store.hasReading)
+                store.setCurrentAsTarget()
+                XCTAssertEqual(store.target, 50)
+                XCTAssertNil(defaults.object(forKey: "targetAngle"))
+            }
         }
     }
 
@@ -368,14 +446,26 @@ private final class TestClock {
 private final class TestSensor: AlignmentSensor {
     var onAngle: ((Double?) -> Void)?
     var isAvailable = true
+    private(set) var latestRawAngle: Double?
     private(set) var starts = 0
     private(set) var stops = 0
 
-    func start() { starts += 1 }
-    func stop() { stops += 1 }
-    func send(_ reading: Double) { onAngle?(reading) }
+    func start() {
+        starts += 1
+        latestRawAngle = nil
+    }
+    func stop() {
+        stops += 1
+        latestRawAngle = nil
+    }
+    func send(_ reading: Double) { send(reading, rawAngle: reading) }
+    func send(_ reading: Double, rawAngle: Double?) {
+        latestRawAngle = rawAngle
+        onAngle?(reading)
+    }
     func fail() {
         isAvailable = false
+        latestRawAngle = nil
         onAngle?(nil)
     }
 }

@@ -4,7 +4,12 @@ import Carbon.HIToolbox
 /// All shortcuts and hold-to-peek feedback are confined to the showcase window.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    let alignment = AlignmentStore()
+    let alignment: AlignmentStore = {
+        #if DEBUG
+        if let fixture = UITestConfiguration.makeStoreIfRequested() { return fixture }
+        #endif
+        return AlignmentStore()
+    }()
     private var keyMonitor: Any?
     private var lifecycleObservers: [NSObjectProtocol] = []
     private var sleepObserver: NSObjectProtocol?
@@ -89,8 +94,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         switch Int(event.keyCode) {
         case kVK_Escape: alignment.dismiss()
         case kVK_ANSI_C: alignment.setCurrentAsTarget()
-        case kVK_UpArrow: alignment.adjustTarget(by: modifiers.contains(.shift) ? 1 : 0.1)
-        case kVK_DownArrow: alignment.adjustTarget(by: modifiers.contains(.shift) ? -1 : -0.1)
+        case kVK_UpArrow: alignment.adjustTarget(by: 1)
+        case kVK_DownArrow: alignment.adjustTarget(by: -1)
         default: return false
         }
         return true

@@ -26,6 +26,8 @@ final class LidAngleSensor: NSObject {
     /// Availability is updated before every callback. Nil invalidates the last sample.
     var onAngle: ((Double?) -> Void)?
     private(set) var isAvailable = false
+    /// Calibration uses this sample rather than the lagging display average.
+    private(set) var latestRawAngle: Double?
 
     private let transport: any LidAngleTransport
     private let clock: () -> TimeInterval
@@ -60,6 +62,7 @@ final class LidAngleSensor: NSObject {
         isRunning = true
         nextRetryAt = clock()
         smoothedAngle = nil
+        latestRawAngle = nil
 
         if schedulesTimer {
             // Weak capture avoids a Timer -> sensor -> Timer ownership cycle.
@@ -107,7 +110,7 @@ final class LidAngleSensor: NSObject {
             Self.smoothingFactor * raw + (1 - Self.smoothingFactor) * $0
         } ?? raw
         smoothedAngle = smoothed
-        publish(smoothed)
+        publish(smoothed, rawAngle: raw)
     }
 
     private func fail(at time: TimeInterval) {
@@ -118,8 +121,9 @@ final class LidAngleSensor: NSObject {
         publish(nil)
     }
 
-    private func publish(_ sample: Double?) {
+    private func publish(_ sample: Double?, rawAngle: Double? = nil) {
         isAvailable = sample != nil
+        latestRawAngle = rawAngle
         onAngle?(sample)
     }
 }

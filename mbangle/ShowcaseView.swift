@@ -313,12 +313,12 @@ private struct AlignmentTray: View {
                         .font(.system(size: 10, weight: .semibold)).tracking(1.2)
                         .foregroundStyle(ShowcaseStyle.secondary)
                     HStack(spacing: 8) {
-                        adjustButton(symbol: "minus", label: "Decrease target angle", step: -0.1)
-                        Text(String(format: "%.1f°", alignment.target))
+                        adjustButton(symbol: "minus", label: "Decrease target angle", step: -1)
+                        Text(String(format: "%.0f°", alignment.target))
                             .font(.system(size: 17, weight: .semibold)).monospacedDigit()
                             .frame(minWidth: 66)
                             .accessibilityIdentifier("target-angle")
-                        adjustButton(symbol: "plus", label: "Increase target angle", step: 0.1)
+                        adjustButton(symbol: "plus", label: "Increase target angle", step: 1)
                     }
                     Button("Set current angle") { alignment.setCurrentAsTarget() }
                         .buttonStyle(.plain)
@@ -334,7 +334,7 @@ private struct AlignmentTray: View {
 
             Divider().opacity(0.55)
             HStack {
-                Text("C set target   ·   ↑↓ adjust   ·   ⇧ for 1°")
+                Text("C set target   ·   ↑↓ adjust by 1°")
                 Spacer()
                 Button("Done") { alignment.hide() }
                     .buttonStyle(.plain)

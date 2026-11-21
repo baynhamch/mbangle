@@ -3,6 +3,56 @@ import XCTest
 
 @MainActor
 final class LidAngleSensorTests: XCTestCase {
+    func testCalibrationUsesLatestIntegerSampleAndReacquiresAfterRelaunch() {
+        let suiteName = "mbangle.precision-tests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        // Reproduce the formerly unreachable fractional calibration at ±0.3°.
+        defaults.set(0.3, forKey: "toleranceDegrees")
+        let clock = SensorTestClock()
+        let transport = SensorTestTransport(connections: [true], readings: [104, 103, 103])
+        let sensor = LidAngleSensor(transport: transport, clock: { clock.now }, schedulesTimer: false)
+        let store = AlignmentStore(
+            defaults: defaults, sensor: sensor, now: { clock.now },
+            automaticallyMonitorFreshness: false
+        )
+        defer { store.dismiss() }
+        store.show()
+        XCTAssertEqual(store.angle, 76)
+        sensor.poll()
+        XCTAssertEqual(store.angle!, 76.35, accuracy: 0.0001)
+        XCTAssertEqual(sensor.latestRawAngle, 103)
+
+        store.setCurrentAsTarget()
+        XCTAssertEqual(store.target, 77)
+        XCTAssertEqual(defaults.double(forKey: "targetAngle"), 103)
+        XCTAssertEqual(store.tolerance, 0.5)
+        XCTAssertEqual(defaults.double(forKey: "toleranceDegrees"), 0.5)
+        // Saving does not snap the animated display or report success too early.
+        XCTAssertEqual(store.angle!, 76.35, accuracy: 0.0001)
+        XCTAssertFalse(store.isOnTarget)
+        sensor.poll()
+        XCTAssertTrue(store.isOnTarget)
+        store.hide()
+        XCTAssertNil(sensor.latestRawAngle)
+
+        let restoredSensor = LidAngleSensor(
+            transport: SensorTestTransport(connections: [true], readings: [103]),
+            clock: { clock.now }, schedulesTimer: false
+        )
+        let restored = AlignmentStore(
+            defaults: defaults, sensor: restoredSensor, now: { clock.now },
+            automaticallyMonitorFreshness: false
+        )
+        defer { restored.dismiss() }
+        restored.show()
+        restored.beginPeek()
+        XCTAssertEqual(restored.target, 77)
+        XCTAssertEqual(restored.angle, 77)
+        XCTAssertTrue(restored.isOnTarget)
+        XCTAssertEqual(restored.titleFillFraction, 1)
+    }
+
     func testTransportFailureAndRecoveryReachTheLiveAlignmentStore() {
         let suiteName = "mbangle.transport-store-tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suiteName)!
@@ -64,18 +114,22 @@ final class LidAngleSensorTests: XCTestCase {
         let sensor = LidAngleSensor(transport: transport, clock: { clock.now }, schedulesTimer: false)
         var samples: [Double?] = []
         var availability: [Bool] = []
+        var rawSamples: [Double?] = []
         sensor.onAngle = { [weak sensor] sample in
             samples.append(sample)
             availability.append(sensor?.isAvailable ?? false)
+            rawSamples.append(sensor?.latestRawAngle)
         }
 
         sensor.start()
         XCTAssertEqual(samples[0], 104)
         XCTAssertEqual(availability, [true])
+        XCTAssertEqual(rawSamples[0], 104)
         clock.now = 0.1
         sensor.poll()
         XCTAssertNil(samples[1])
         XCTAssertEqual(availability, [true, false])
+        XCTAssertNil(rawSamples[1])
         XCTAssertFalse(sensor.isAvailable)
         XCTAssertEqual(transport.disconnections, 1)
         XCTAssertFalse(transport.isConnected)
@@ -91,9 +145,11 @@ final class LidAngleSensorTests: XCTestCase {
         sensor.start()
         sensor.poll()
         XCTAssertEqual(latest!, 103.5, accuracy: 0.0001)
+        XCTAssertEqual(sensor.latestRawAngle, 110)
         clock.now = 0.2
         sensor.poll()
         XCTAssertNil(latest)
+        XCTAssertNil(sensor.latestRawAngle)
         clock.now = 1.19
         sensor.poll()
         XCTAssertEqual(transport.connectionAttempts, 1)
@@ -101,6 +157,7 @@ final class LidAngleSensorTests: XCTestCase {
         sensor.poll()
         XCTAssertEqual(transport.connectionAttempts, 2)
         XCTAssertEqual(latest, 140)
+        XCTAssertEqual(sensor.latestRawAngle, 140)
         sensor.stop()
     }
 
@@ -115,6 +172,7 @@ final class LidAngleSensorTests: XCTestCase {
             XCTAssertEqual(latest, 104)
             sensor.poll()
             XCTAssertNil(latest)
+            XCTAssertNil(sensor.latestRawAngle)
             XCTAssertFalse(sensor.isAvailable)
             XCTAssertFalse(transport.isConnected)
             clock.now = 1
@@ -136,6 +194,7 @@ final class LidAngleSensorTests: XCTestCase {
         sensor.stop()
         sensor.stop()
         XCTAssertNil(latest)
+        XCTAssertNil(sensor.latestRawAngle)
         XCTAssertFalse(sensor.isAvailable)
         XCTAssertFalse(transport.isConnected)
         XCTAssertEqual(transport.disconnections, 1)
@@ -146,6 +205,7 @@ final class LidAngleSensorTests: XCTestCase {
         sensor.start()
         XCTAssertEqual(transport.connectionAttempts, 2)
         XCTAssertEqual(latest, 120)
+        XCTAssertEqual(sensor.latestRawAngle, 120)
         sensor.stop()
     }
 

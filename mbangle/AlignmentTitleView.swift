@@ -39,8 +39,11 @@ struct AlignmentTitleView: View {
             .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: alignment.isOnTarget)
             .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: alignment.isPeeking)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("MacBook Air 15-inch")
-            .accessibilityValue(alignment.isPeeking ? alignment.correction : "")
+            // macOS exposes this composed heading as a group, which omits AXValue.
+            // Include momentary feedback in its spoken label so it remains available to VoiceOver.
+            .accessibilityLabel(alignment.isPeeking
+                ? "MacBook Air 15-inch, \(alignment.correction)"
+                : "MacBook Air 15-inch")
             .accessibilityIdentifier("alignment-title")
     }
 }

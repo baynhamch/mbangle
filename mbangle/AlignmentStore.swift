@@ -7,6 +7,9 @@ protocol AlignmentSensor: AnyObject {
     /// A nil sample immediately invalidates the previous reading.
     var onAngle: ((Double?) -> Void)? { get set }
     var isAvailable: Bool { get }
+    /// The unsmoothed sample associated with the latest valid callback.
+    /// Cleared when the sensor stops or a read fails.
+    var latestRawAngle: Double? { get }
     func start()
     func stop()
 }
@@ -31,6 +34,8 @@ final class AlignmentStore: ObservableObject {
     private var lastReadingAt: TimeInterval?
     private var freshnessTimer: Timer?
     static let readingLifetime: TimeInterval = 1
+    private static let defaultRawTarget = 130.0
+    private static let minimumTolerance = 0.5
 
     init(
         defaults: UserDefaults = .standard,
@@ -44,14 +49,23 @@ final class AlignmentStore: ObservableObject {
         self.automaticallyMonitorFreshness = automaticallyMonitorFreshness
         isSensorAvailable = self.sensor.isAvailable
 
-        // Preserve the saved target in the original sensor convention so existing
-        // calibrations still identify the same physical lid position. Display the
-        // complementary angle: a raw reading of 104° is shown as 76°.
-        // Zero is a valid saved target, not a missing preference.
-        let savedTarget = (defaults.object(forKey: "targetAngle") as? NSNumber)?.doubleValue
-        target = 180 - Self.normalizedTarget(savedTarget ?? 130)
-        let savedTolerance = defaults.double(forKey: "toleranceDegrees")
-        tolerance = savedTolerance.isFinite && savedTolerance > 0 ? savedTolerance : 0.5
+        // Store whole degrees in the original sensor convention. Round in raw
+        // space on both load and save so half-degree ties migrate consistently.
+        // A raw target of 104° is still displayed as 76°; zero remains valid.
+        let targetPreference = defaults.object(forKey: "targetAngle")
+        let savedTarget = (targetPreference as? NSNumber)?.doubleValue
+        let rawTarget = Self.normalizedRawTarget(savedTarget ?? Self.defaultRawTarget)
+        target = 180 - rawTarget
+        if targetPreference != nil, savedTarget != rawTarget {
+            defaults.set(rawTarget, forKey: "targetAngle")
+        }
+
+        let tolerancePreference = defaults.object(forKey: "toleranceDegrees")
+        let savedTolerance = (tolerancePreference as? NSNumber)?.doubleValue
+        tolerance = Self.normalizedTolerance(savedTolerance ?? Self.minimumTolerance)
+        if tolerancePreference != nil, savedTolerance != tolerance {
+            defaults.set(tolerance, forKey: "toleranceDegrees")
+        }
 
         self.sensor.onAngle = { [weak self] reading in
             guard let self, self.needsReadings else { return }
@@ -145,8 +159,10 @@ final class AlignmentStore: ObservableObject {
 
     func setCurrentAsTarget() {
         refreshReadingValidity()
-        guard isExpanded, hasReading, let angle else { return }
-        saveTarget(angle)
+        guard isExpanded, hasReading, sensor.isAvailable,
+              let rawAngle = sensor.latestRawAngle, rawAngle.isFinite,
+              (0...180).contains(rawAngle) else { return }
+        saveRawTarget(rawAngle)
     }
 
     /// Also checked synchronously before calibration, so a delayed timer can
@@ -190,12 +206,22 @@ final class AlignmentStore: ObservableObject {
     }
 
     private func saveTarget(_ value: Double) {
-        target = Self.normalizedTarget(value)
-        defaults.set(180 - target, forKey: "targetAngle")
+        saveRawTarget(180 - value)
     }
 
-    private static func normalizedTarget(_ value: Double) -> Double {
-        guard value.isFinite else { return 130 }
-        return min(max(value, 0), 180)
+    private func saveRawTarget(_ value: Double) {
+        let rawTarget = Self.normalizedRawTarget(value)
+        target = 180 - rawTarget
+        defaults.set(rawTarget, forKey: "targetAngle")
+    }
+
+    private static func normalizedRawTarget(_ value: Double) -> Double {
+        guard value.isFinite else { return defaultRawTarget }
+        return min(max(value, 0), 180).rounded()
+    }
+
+    private static func normalizedTolerance(_ value: Double) -> Double {
+        guard value.isFinite else { return minimumTolerance }
+        return max(minimumTolerance, value)
     }
 }
