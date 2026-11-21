@@ -1,0 +1,20 @@
+# macOS and Xcode user state
+.DS_Store
+xcuserdata/
+*.xcuserstate
+
+# Generated builds, test results, and exports
+DerivedData/
+build/
+.build/
+*.xcresult
+*.app/
+*.dSYM/
+*.xcarchive/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+*.p12
+*.mobileprovision
