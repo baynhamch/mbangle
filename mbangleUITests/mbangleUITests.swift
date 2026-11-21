@@ -14,7 +14,7 @@ final class mbangleUITests: XCTestCase {
         assertText("—", in: element("live-angle", in: app))
         assertText("Sensor unavailable", in: element("alignment-status", in: app))
         XCTAssertFalse(app.buttons["set-current-angle"].isEnabled)
-        assertText("50°", in: element("target-angle", in: app))
+        assertText("76°", in: element("target-angle", in: app))
 
         app.typeKey(.escape, modifierFlags: [])
         assertGone(element("alignment-tray", in: app))
@@ -25,11 +25,13 @@ final class mbangleUITests: XCTestCase {
         defer { app.terminate() }
         openTray(in: app)
         assertText("76.0°", in: element("live-angle", in: app))
-        assertText("50°", in: element("target-angle", in: app))
+        assertText("76°", in: element("target-angle", in: app))
         XCTAssertTrue(app.buttons["set-current-angle"].isEnabled)
 
-        app.buttons["set-current-angle"].click()
         let target = element("target-angle", in: app)
+        app.buttons["Increase target angle"].click()
+        assertText("77°", in: target)
+        app.buttons["set-current-angle"].click()
         assertText("76°", in: target)
         assertText("On target", in: element("alignment-status", in: app))
 
@@ -52,10 +54,8 @@ final class mbangleUITests: XCTestCase {
     func testOptionHoldShowsFeedbackAndReleaseRestoresNormalTitle() {
         let app = launch(sensor: "raw104")
         defer { app.terminate() }
-        openTray(in: app)
-        app.buttons["set-current-angle"].click()
-        app.typeKey(.escape, modifierFlags: [])
-        assertGone(element("alignment-tray", in: app))
+        // Empty preferences must already align with raw 104°; no calibration runs first.
+        XCTAssertFalse(element("alignment-tray", in: app).exists)
         let title = element("alignment-title", in: app)
         assertLabel("MacBook Air 15-inch", in: title)
 
@@ -71,18 +71,19 @@ final class mbangleUITests: XCTestCase {
         assertGone(app.buttons["alignment-reveal"])
     }
 
-    func testFixtureCalibrationDoesNotPersistBetweenLaunches() {
+    func testFixtureTargetAdjustmentDoesNotPersistBetweenLaunches() {
         let app = launch(sensor: "raw104")
         openTray(in: app)
-        app.buttons["set-current-angle"].click()
         assertText("76°", in: element("target-angle", in: app))
+        app.buttons["Increase target angle"].click()
+        assertText("77°", in: element("target-angle", in: app))
         app.terminate()
 
         app.launch()
         defer { app.terminate() }
         focusShowcase(in: app)
         openTray(in: app)
-        assertText("50°", in: element("target-angle", in: app))
+        assertText("76°", in: element("target-angle", in: app))
         assertText("76.0°", in: element("live-angle", in: app))
     }
 

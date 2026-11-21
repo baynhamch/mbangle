@@ -50,7 +50,8 @@ enum UITestConfiguration {
 /// Only this test store's dictionary is read or written; calibration never reaches a defaults domain.
 private nonisolated final class MemoryUITestDefaults: UserDefaults, @unchecked Sendable {
     private let lock = NSLock()
-    private var values: [String: Any] = ["targetAngle": 130.0, "toleranceDegrees": 0.5]
+    // Empty preferences exercise the same first-launch defaults as the real app.
+    private var values: [String: Any] = [:]
 
     init() {
         // Even inherited operations are isolated from the application's standard defaults.

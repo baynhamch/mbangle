@@ -20,7 +20,13 @@ The project has been built and tested with Xcode 27.2.
 
 The app opens a regular macOS window. Its controls and shortcuts operate inside that window; it does not overlay other apps or register a global shortcut.
 
-## First-use calibration
+## First use: 76° target
+
+Fresh installations start with a **76° target** and **±0.5° tolerance**. Focus the showcase window, hold **Option (`⌥`)**, and move the lid until the title turns green. No calibration is needed to use the default target on a compatible MacBook.
+
+Previously saved targets are preserved when updating the app. To choose a different target, use the optional calibration below.
+
+### Optional calibration
 
 1. Move the MacBook lid to the physical position you want to save.
 2. Focus the showcase window and press **`⌃⌥⇧L`** to open the alignment tray. Alternatively, hold Option and click the small line at the bottom of the window.
@@ -45,13 +51,13 @@ Moving focus away from the showcase or opening a detail sheet clears alignment f
 
 The displayed angle is **180° minus the raw sensor angle**: a sensor reading of **104° displays as 76°**. Target adjustments use these displayed degrees.
 
-The `targetAngle` preference remains stored in raw sensor degrees, and the app converts it when displaying or saving a target. An existing raw target of 104° remains a displayed target of 76°. Older fractional targets are rounded to the nearest whole raw degree and saved back on launch; exact half-degree ties round upward in raw degrees. This changes an in-range fractional target by at most 0.5°. Before calibration, the default raw target is 130°, displayed as 50°.
+The `targetAngle` preference remains stored in raw sensor degrees, and the app converts it when displaying or saving a target. An existing raw target of 104° remains a displayed target of 76°. Older fractional targets are rounded to the nearest whole raw degree and saved back on launch; exact half-degree ties round upward in raw degrees. This changes an in-range fractional target by at most 0.5°. The default raw target is 104°, displayed as 76°. An existing saved target takes precedence, including an older 130° raw / 50° displayed target.
 
 Settings are stored locally in macOS `UserDefaults` under `com.nconanthiley.mbangle`:
 
 | Key | Meaning | Default |
 | --- | --- | --- |
-| `targetAngle` | Saved target in whole raw sensor degrees | 130° raw / 50° displayed |
+| `targetAngle` | Saved target in whole raw sensor degrees | 104° raw / 76° displayed |
 | `toleranceDegrees` | Allowed difference from the target, minimum 0.5° | 0.5° |
 
 To change tolerance, quit the app, run the following, then reopen it:
@@ -90,7 +96,7 @@ Product descriptions, prices, and lease wording are **demonstration content from
 
 The model tests use injected sensors, HID transports, clocks, and isolated preferences. They cover calibration persistence, the 104° → 76° conversion, whole-degree target migration, raw-sample calibration while smoothing is still settling, target reacquisition after restart, adjustment bounds, direction and tolerance, title fill, and overlapping tray/Option-hold lifetimes. Failure tests cover stale readings, blocked stale calibration, unavailable devices, throttled reconnection, smoothing reset, and stopping all work when feedback closes.
 
-The UI tests launch explicit Debug-only sensor fixtures with isolated preferences. They exercise unavailable hardware, calibration, keyboard controls, tray dismissal, and accessible title feedback during Option hold/release without depending on the host Mac's sensor. A relaunch check verifies that fixture calibration does not persist. Normal launches always use real sensor discovery; Release builds do not include the UI-test fixtures.
+The UI tests launch explicit Debug-only sensor fixtures with isolated preferences. They exercise the first-launch 76° target, unavailable hardware, calibration, keyboard controls, tray dismissal, and accessible title feedback during Option hold/release without depending on the host Mac's sensor. A relaunch check verifies that fixture target changes do not persist. Normal launches always use real sensor discovery; Release builds do not include the UI-test fixtures.
 
 Run the scheme's tests in Xcode, or from the repository root:
 

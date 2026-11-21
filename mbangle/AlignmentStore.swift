@@ -34,7 +34,7 @@ final class AlignmentStore: ObservableObject {
     private var lastReadingAt: TimeInterval?
     private var freshnessTimer: Timer?
     static let readingLifetime: TimeInterval = 1
-    private static let defaultRawTarget = 130.0
+    private static let defaultRawTarget = 104.0 // Displayed target: 76°.
     private static let minimumTolerance = 0.5
 
     init(

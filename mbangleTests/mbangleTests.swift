@@ -35,7 +35,7 @@ final class mbangleTests: XCTestCase {
         withClockedStore { store, sensor, _, defaults in
             store.show()
             store.beginPeek()
-            sensor.send(130)
+            sensor.send(104)
             XCTAssertTrue(store.isOnTarget)
             XCTAssertEqual(store.titleFillFraction, 1)
             sensor.fail()
@@ -52,7 +52,7 @@ final class mbangleTests: XCTestCase {
     func testSilenceExpiresTheReadingAndClearsPublishedAngle() {
         withClockedStore { store, sensor, clock, _ in
             store.beginPeek()
-            sensor.send(130)
+            sensor.send(104)
             clock.time += 0.99
             store.refreshReadingValidity()
             XCTAssertTrue(store.isOnTarget)
@@ -70,10 +70,10 @@ final class mbangleTests: XCTestCase {
     func testCalibrationCannotSaveAnExpiredReadingBeforeWatchdogFires() {
         withClockedStore { store, sensor, clock, defaults in
             store.show()
-            sensor.send(104)
+            sensor.send(130)
             clock.time += AlignmentStore.readingLifetime
             store.setCurrentAsTarget()
-            XCTAssertEqual(store.target, 50)
+            XCTAssertEqual(store.target, 76)
             XCTAssertNil(defaults.object(forKey: "targetAngle"))
             XCTAssertNil(store.angle)
         }
@@ -83,11 +83,11 @@ final class mbangleTests: XCTestCase {
         withClockedStore { store, sensor, clock, _ in
             store.show()
             store.beginPeek()
-            sensor.send(130)
+            sensor.send(104)
             sensor.fail()
             clock.time += 3
             sensor.isAvailable = true
-            sensor.send(130)
+            sensor.send(104)
             XCTAssertTrue(store.isExpanded)
             XCTAssertTrue(store.isSensorAvailable)
             XCTAssertTrue(store.isOnTarget)
@@ -99,9 +99,9 @@ final class mbangleTests: XCTestCase {
     func testEachValidReadingRefreshesTheFreshnessDeadline() {
         withClockedStore { store, sensor, clock, _ in
             store.beginPeek()
-            sensor.send(130)
+            sensor.send(104)
             clock.time += 0.8
-            sensor.send(130)
+            sensor.send(104)
             clock.time += 0.8
             store.refreshReadingValidity()
             XCTAssertTrue(store.isOnTarget)
@@ -125,7 +125,7 @@ final class mbangleTests: XCTestCase {
 
     func testTargetAdjustmentsClampAndPersist() {
         withStore { store, _, defaults in
-            XCTAssertEqual(store.target, 50)
+            XCTAssertEqual(store.target, 76)
             store.adjustTarget(by: 200)
             XCTAssertEqual(store.target, 180)
             store.adjustTarget(by: -200)
@@ -139,7 +139,7 @@ final class mbangleTests: XCTestCase {
 
     func testMissingPreferencesUseDefaultsWithoutWritingCalibrationOrTolerance() {
         withStore { store, _, defaults in
-            XCTAssertEqual(store.target, 50)
+            XCTAssertEqual(store.target, 76)
             XCTAssertEqual(store.tolerance, 0.5)
             XCTAssertNil(defaults.object(forKey: "targetAngle"))
             XCTAssertNil(defaults.object(forKey: "toleranceDegrees"))
@@ -149,7 +149,7 @@ final class mbangleTests: XCTestCase {
     func testFractionalTargetsMigrateOnceInRawSpaceIncludingTiesAndBounds() {
         withStore { _, _, defaults in
             let cases: [(saved: Double, raw: Double)] = [
-                (103.65, 104), (104.35, 104), (104.5, 105), (104, 104),
+                (103.65, 104), (104.35, 104), (104.5, 105), (104, 104), (130, 130),
                 (0.5, 1), (179.5, 180), (0, 0), (180, 180), (-10, 0), (200, 180)
             ]
             for value in cases {
@@ -173,8 +173,8 @@ final class mbangleTests: XCTestCase {
             for invalid in invalidValues {
                 defaults.set(invalid, forKey: "targetAngle")
                 let restored = AlignmentStore(defaults: defaults, sensor: TestSensor())
-                XCTAssertEqual(restored.target, 50)
-                XCTAssertEqual(defaults.double(forKey: "targetAngle"), 130)
+                XCTAssertEqual(restored.target, 76)
+                XCTAssertEqual(defaults.double(forKey: "targetAngle"), 104)
             }
         }
     }
@@ -218,12 +218,13 @@ final class mbangleTests: XCTestCase {
     func testCalibrationStoresRawAngleAndRestoresComplementaryDisplay() {
         withStore { store, sensor, defaults in
             store.show()
-            sensor.send(104)
+            // The former default remains a valid saved calibration after the default changes.
+            sensor.send(130)
             store.setCurrentAsTarget()
-            XCTAssertEqual(store.target, 76)
-            XCTAssertEqual(defaults.double(forKey: "targetAngle"), 104)
+            XCTAssertEqual(store.target, 50)
+            XCTAssertEqual(defaults.double(forKey: "targetAngle"), 130)
             let restored = AlignmentStore(defaults: defaults, sensor: TestSensor())
-            XCTAssertEqual(restored.target, 76)
+            XCTAssertEqual(restored.target, 50)
         }
     }
 
@@ -251,13 +252,13 @@ final class mbangleTests: XCTestCase {
     func testToleranceBoundaryAndDirection() {
         withStore { store, sensor, _ in
             store.show()
-            sensor.send(129.5)
+            sensor.send(103.5)
             XCTAssertTrue(store.isOnTarget)
             XCTAssertEqual(store.correction, "On target")
-            sensor.send(129.4)
+            sensor.send(103.4)
             XCTAssertFalse(store.isOnTarget)
             XCTAssertEqual(store.correction, "Open lid 0.6°")
-            sensor.send(130.6)
+            sensor.send(104.6)
             XCTAssertEqual(store.correction, "Close lid 0.6°")
         }
     }
@@ -270,7 +271,7 @@ final class mbangleTests: XCTestCase {
             XCTAssertFalse(store.isOnTarget)
             XCTAssertEqual(store.correction, "Sensor unavailable")
             store.setCurrentAsTarget()
-            XCTAssertEqual(store.target, 50)
+            XCTAssertEqual(store.target, 76)
             XCTAssertNil(defaults.object(forKey: "targetAngle"))
         }
     }
@@ -298,10 +299,10 @@ final class mbangleTests: XCTestCase {
             store.show()
             let invalidSamples: [Double?] = [nil, Double.nan, Double.infinity, -1, 181]
             for invalid in invalidSamples {
-                sensor.send(104, rawAngle: invalid)
+                sensor.send(130, rawAngle: invalid)
                 XCTAssertTrue(store.hasReading)
                 store.setCurrentAsTarget()
-                XCTAssertEqual(store.target, 50)
+                XCTAssertEqual(store.target, 76)
                 XCTAssertNil(defaults.object(forKey: "targetAngle"))
             }
         }
@@ -314,7 +315,7 @@ final class mbangleTests: XCTestCase {
             sensor.send(65535)
             XCTAssertNil(store.angle)
             store.adjustTarget(by: .infinity)
-            XCTAssertEqual(store.target, 50)
+            XCTAssertEqual(store.target, 76)
         }
     }
 
@@ -369,7 +370,7 @@ final class mbangleTests: XCTestCase {
             XCTAssertTrue(store.isPeeking)
             XCTAssertEqual(sensor.stops, 0)
             XCTAssertEqual(store.angle, 51)
-            sensor.send(130)
+            sensor.send(104)
             XCTAssertTrue(store.isOnTarget)
             XCTAssertEqual(store.titleFillFraction, 1)
             store.endPeek()
@@ -398,17 +399,17 @@ final class mbangleTests: XCTestCase {
         withStore { store, sensor, _ in
             store.beginPeek()
             XCTAssertEqual(store.titleFillFraction, 0)
-            sensor.send(120)
+            sensor.send(94)
             let distantFill = store.titleFillFraction
-            sensor.send(124.5)
+            sensor.send(98.5)
             XCTAssertEqual(store.titleFillFraction, 0.5, accuracy: 0.0001)
             XCTAssertGreaterThan(store.titleFillFraction, distantFill)
-            sensor.send(135.5)
+            sensor.send(109.5)
             XCTAssertEqual(store.titleFillFraction, 0.5, accuracy: 0.0001)
-            sensor.send(129.5)
+            sensor.send(103.5)
             XCTAssertTrue(store.isOnTarget)
             XCTAssertEqual(store.titleFillFraction, 1)
-            sensor.send(130.5)
+            sensor.send(104.5)
             XCTAssertTrue(store.isOnTarget)
             XCTAssertEqual(store.titleFillFraction, 1)
             sensor.send(180)
@@ -426,7 +427,7 @@ final class mbangleTests: XCTestCase {
             store.endPeek()
             sensor.isAvailable = true
             store.beginPeek()
-            sensor.send(130)
+            sensor.send(104)
             XCTAssertEqual(store.titleFillFraction, 1)
             sensor.send(.nan)
             XCTAssertEqual(store.titleFillFraction, 0)

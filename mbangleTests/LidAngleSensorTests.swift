@@ -58,7 +58,7 @@ final class LidAngleSensorTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suiteName)!
         defer { defaults.removePersistentDomain(forName: suiteName) }
         let clock = SensorTestClock()
-        let transport = SensorTestTransport(connections: [true, true], readings: [130, nil, 130])
+        let transport = SensorTestTransport(connections: [true, true], readings: [104, nil, 104])
         let sensor = LidAngleSensor(transport: transport, clock: { clock.now }, schedulesTimer: false)
         let store = AlignmentStore(
             defaults: defaults, sensor: sensor, now: { clock.now },
