@@ -3,8 +3,9 @@
 ## App icon
 
 `mbangle/Assets.xcassets/AppIcon.appiconset` contains original vector artwork
-created for mbangle: a graphite lid/base profile and muted green angle arc on a
-silver rounded tile. It contains no Apple logo or copied app mark.
+created for mbangle: a silver lid/base profile and green alignment arc on a
+graphite rounded tile. The profile's 104° interior angle corresponds to the
+app's displayed 76° default target. It contains no Apple logo or copied app mark.
 
 The PNG files are rendered directly from AppKit paths and gradients, rather than
 scaled from a small bitmap. The asset catalog includes all ten macOS 1×/2× slots
@@ -17,7 +18,8 @@ Regenerate from the repository root with:
 swift tools/generate-app-icon.swift
 ```
 
-The 1024-pixel and 32-pixel outputs were visually inspected after generation.
+The 1024-, 128-, 32-, and 16-pixel outputs were visually inspected after generation.
+Both Debug and Release use this `AppIcon` asset set for the app bundle's icon.
 
 ## MacBook Air photograph
 

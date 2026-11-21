@@ -2,7 +2,8 @@
 import AppKit
 
 // Original vector artwork for mbangle. All geometry is drawn in a 1024-point
-// canvas and rendered directly at each macOS icon resolution.
+// canvas and rendered directly at each macOS icon resolution. The lid profile
+// uses a 104-degree interior angle, matching the app's displayed 76-degree target.
 let output = URL(fileURLWithPath: CommandLine.arguments.count > 1
     ? CommandLine.arguments[1]
     : "mbangle/Assets.xcassets/AppIcon.appiconset", isDirectory: true)
@@ -36,36 +37,61 @@ func drawIcon(pixels: Int) throws -> Data {
         xRadius: 192, yRadius: 192)
     NSGraphicsContext.saveGraphicsState()
     let shadow = NSShadow()
-    shadow.shadowColor = NSColor.black.withAlphaComponent(0.19)
+    shadow.shadowColor = NSColor.black.withAlphaComponent(0.28)
     shadow.shadowBlurRadius = 27
     shadow.shadowOffset = NSSize(width: 0, height: -12)
     shadow.set()
-    NSColor(white: 0.88, alpha: 1).setFill()
+    NSColor(calibratedRed: 0.08, green: 0.11, blue: 0.15, alpha: 1).setFill()
     tile.fill()
     NSGraphicsContext.restoreGraphicsState()
-    NSGradient(starting: NSColor(calibratedRed: 0.97, green: 0.975, blue: 0.98, alpha: 1),
-        ending: NSColor(calibratedRed: 0.82, green: 0.84, blue: 0.85, alpha: 1))!
+    NSGradient(starting: NSColor(calibratedRed: 0.21, green: 0.26, blue: 0.31, alpha: 1),
+        ending: NSColor(calibratedRed: 0.07, green: 0.10, blue: 0.14, alpha: 1))!
         .draw(in: tile, angle: -90)
-    tile.lineWidth = 2
-    NSColor.white.withAlphaComponent(0.76).setStroke()
-    tile.stroke()
+    let rim = NSBezierPath(roundedRect: NSRect(x: 67, y: 67, width: 890, height: 890),
+        xRadius: 190, yRadius: 190)
+    rim.lineWidth = 2
+    NSColor.white.withAlphaComponent(0.15).setStroke()
+    rim.stroke()
 
-    let hinge = NSPoint(x: 315, y: 337)
-    let top = NSPoint(x: 245, y: 699)
-    let tip = NSPoint(x: 762, y: 337)
-    let graphite = NSColor(calibratedRed: 0.25, green: 0.29, blue: 0.31, alpha: 1)
+    let hinge = NSPoint(x: 340, y: 330)
+    let lidAngle = 104.0 * Double.pi / 180
+    let top = NSPoint(x: hinge.x + 420 * cos(lidAngle), y: hinge.y + 420 * sin(lidAngle))
+    let tip = NSPoint(x: 776, y: hinge.y)
+    let compact = pixels <= 32
+    let profileWidth: CGFloat = compact ? 58 : 48
 
-    // A quiet inset highlight gives the mark a machined-aluminum edge.
-    stroke([NSPoint(x: top.x, y: top.y + 3), NSPoint(x: hinge.x, y: hinge.y + 3),
-            NSPoint(x: tip.x, y: tip.y + 3)],
-        color: .white.withAlphaComponent(0.7), width: 47)
-    stroke([top, hinge, tip], color: graphite, width: pixels <= 32 ? 52 : 44)
+    // A restrained lower edge gives the silver profile depth at Dock sizes.
+    NSGraphicsContext.saveGraphicsState()
+    let profileShadow = NSShadow()
+    profileShadow.shadowColor = NSColor.black.withAlphaComponent(0.30)
+    profileShadow.shadowBlurRadius = 18
+    profileShadow.shadowOffset = NSSize(width: 0, height: -12)
+    profileShadow.set()
+    stroke([top, hinge, tip],
+        color: NSColor(calibratedRed: 0.55, green: 0.63, blue: 0.68, alpha: 1),
+        width: profileWidth + 6)
+    NSGraphicsContext.restoreGraphicsState()
+    let face = [top, hinge, tip].map { NSPoint(x: $0.x, y: $0.y + 4) }
+    stroke(face, color: NSColor(calibratedRed: 0.88, green: 0.93, blue: 0.95, alpha: 1),
+        width: profileWidth)
 
     let arc = NSBezierPath()
-    arc.appendArc(withCenter: hinge, radius: 189, startAngle: 6, endAngle: 95)
-    arc.lineWidth = pixels <= 32 ? 27 : 21
+    arc.appendArc(withCenter: hinge, radius: 210, startAngle: 12, endAngle: 92)
+    arc.lineWidth = compact ? 33 : 25
     arc.lineCapStyle = .round
-    NSColor(calibratedRed: 0.29, green: 0.49, blue: 0.41, alpha: 1).setStroke()
+    let alignedGreen = NSColor(calibratedRed: 0.40, green: 0.90, blue: 0.64, alpha: 1)
+    if pixels >= 128 {
+        NSGraphicsContext.saveGraphicsState()
+        let glow = NSShadow()
+        glow.shadowColor = alignedGreen.withAlphaComponent(0.18)
+        glow.shadowBlurRadius = 20
+        glow.shadowOffset = .zero
+        glow.set()
+        alignedGreen.setStroke()
+        arc.stroke()
+        NSGraphicsContext.restoreGraphicsState()
+    }
+    alignedGreen.setStroke()
     arc.stroke()
 
     NSGraphicsContext.restoreGraphicsState()
