@@ -3,6 +3,7 @@ import SwiftUI
 /// Standard macOS settings keep optional cues out of the showcase interface.
 struct FeedbackSettingsView: View {
     @ObservedObject var feedback: AlignmentFeedback
+    private let contactURL = URL(string: "mailto:nicholas_conanthiley@apple.com?subject=mbangle%20feedback")!
 
     var body: some View {
         Form {
@@ -48,9 +49,28 @@ struct FeedbackSettingsView: View {
                     .accessibilityIdentifier("feedback-preview")
                 }
             }
+
+            Section {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Share an idea, report an issue, or get in touch.")
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text("nicholas_conanthiley@apple.com")
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("feedback-contact-email")
+                    Link(destination: contactURL) {
+                        Label("Email Nicholas", systemImage: "envelope")
+                    }
+                    .buttonStyle(.bordered)
+                    .accessibilityIdentifier("feedback-contact-link")
+                }
+                .padding(.vertical, 2)
+            } header: {
+                Text("Feedback & contact")
+            }
         }
         .toggleStyle(.switch)
         .formStyle(.grouped)
-        .frame(width: 440, height: 300)
+        .frame(width: 440, height: 460)
     }
 }

@@ -104,7 +104,7 @@ On the observed Mac sensor profile, the live decimal display comes from smoothin
 
 The layout uses native SwiftUI text, cards, detail sheets, and controls. The main card uses bundled Apple product photography. The app icon is an original angle mark. See [asset sources](docs/ASSETS.md) and [third-party notices](THIRD_PARTY_NOTICES.md). The source-code license does not grant rights to Apple's photographs, product marks, or the supplied reference image; this repository does not establish permission for their redistribution or approval under an employer's policies.
 
-Product descriptions, prices, and lease wording are **demonstration content from the supplied reference**, not a live offer or catalog. Pricing, comparison, upgrade, and disclaimer cards open local detail sheets. The finish dots are a static legend. There is no checkout, account, networking, or telemetry; sensor readings and calibration stay on the Mac.
+Product descriptions, prices, and lease wording are **demonstration content from the supplied reference**, not a live offer or catalog. Pricing, comparison, upgrade, and disclaimer cards open local detail sheets. The finish dots are a static legend. There is no checkout, account, or automatic data collection; sensor readings and calibration stay on the Mac. The optional contact link opens your email app so you can choose what to share.
 
 ## Source map
 
@@ -138,6 +138,13 @@ xcodebuild \
 ```
 
 These tests exercise the app's logic without requiring a lid-angle sensor. Before presenting, rehearse on the intended MacBook: calibrate, move the lid away and back while holding Option, release it, switch apps, and repeat after sleep/wake. A passing automated test does not verify physical sensor accuracy.
+
+## Feedback & contact
+
+To share feedback, report an issue, or get in touch, email
+[nicholas_conanthiley@apple.com](mailto:nicholas_conanthiley@apple.com?subject=mbangle%20feedback).
+You can also open **mbangle → Settings…** (**⌘,**) and choose **Email Nicholas**
+under **Feedback & contact**. This opens an email draft; nothing is sent automatically.
 
 ## Implementation
 
