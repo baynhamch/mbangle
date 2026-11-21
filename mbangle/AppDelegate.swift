@@ -16,6 +16,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(.regular)
+        alignment.onAlignmentReached = { [weak self] in
+            guard let self, NSApp.isActive,
+                  self.isShowcaseWindow(NSApp.keyWindow),
+                  NSApp.keyWindow?.attachedSheet == nil else { return }
+            // Request the performer each time: macOS chooses the current device
+            // and honors its settings. A Force Touch trackpad requires contact.
+            NSHapticFeedbackManager.defaultPerformer.perform(.alignment, performanceTime: .now)
+        }
         keyMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown, .flagsChanged]) { [weak self] event in
             guard let self else { return event }
             // A release can arrive at another window or a sheet. Always process
@@ -57,6 +65,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        alignment.onAlignmentReached = nil
         alignment.dismiss()
         if let keyMonitor { NSEvent.removeMonitor(keyMonitor) }
         lifecycleObservers.forEach(NotificationCenter.default.removeObserver)

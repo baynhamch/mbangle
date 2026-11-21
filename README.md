@@ -4,6 +4,11 @@ An independent native macOS prototype that demonstrates discreet lid-angle align
 
 Hold **Option (`⌥`)** while the showcase window is focused. A muted red fill moves through “MacBook Air 15″” as the lid approaches its saved position, then turns fully green within tolerance. Release Option and the title returns to normal. A hidden calibration tray provides the live angle, target, and adjustment controls.
 
+On a Force Touch trackpad, a short alignment tap can also confirm the position.
+Rest a finger on the trackpad while adjusting the lid; macOS suppresses this
+feedback when the trackpad is not being touched and may suppress it according
+to the current input device or system settings.
+
 ![Examples of the title feedback in its normal, approaching-target, and on-target states](docs/title-feedback.png)
 
 *Illustration rendered from the native view with example readings, not a live sensor capture.*
@@ -46,6 +51,16 @@ The saved target persists across launches. The default and minimum tolerance is 
 | **Done**, tray handle, or background | Close the tray |
 
 Moving focus away from the showcase or opening a detail sheet clears alignment feedback. Polling runs only while the title feedback or calibration tray is active. Releasing Option keeps polling active if the tray is still open.
+
+The haptic confirmation uses Apple's public
+[`NSHapticFeedbackManager` alignment pattern](https://developer.apple.com/documentation/appkit/nshapticfeedbackmanager/feedbackpattern/alignment).
+It requests one short tap after both the raw and smoothed readings stay within
+tolerance for at least 150 ms. It rearms after moving more than 0.5° beyond the
+tolerance boundary, or starting a new feedback session, with a 750 ms minimum
+interval between taps. This prevents repeated taps from small fluctuations.
+Feedback is limited to the focused showcase while Option feedback or the tray
+is active. The system decides whether to deliver a request; see Apple's
+[trackpad-contact limitation](https://developer.apple.com/documentation/appkit/nshapticfeedbackperformer/perform(_:performancetime:)).
 
 ## Angle convention and settings
 
@@ -90,13 +105,14 @@ Product descriptions, prices, and lease wording are **demonstration content from
 | [`ShowcaseView.swift`](mbangle/ShowcaseView.swift) | Product layout, detail sheets, hidden handle, and calibration tray |
 | [`AlignmentTitleView.swift`](mbangle/AlignmentTitleView.swift) | Title-masked red/green feedback |
 | [`AlignmentStore.swift`](mbangle/AlignmentStore.swift) | Calibration, angle conversion, feedback state, and polling lifecycle |
+| [`AlignmentHapticGate.swift`](mbangle/AlignmentHapticGate.swift) | Stable alignment confirmation, repeat suppression, and haptic cooldown |
 | [`NativeAngleSensor.swift`](mbangle/NativeAngleSensor.swift) | Background HID element discovery, reading, unit conversion, and session handling |
 | [`AppDelegate.swift`](mbangle/AppDelegate.swift) | Window-local keyboard handling and lifecycle cleanup |
 | [`mbangleTests.swift`](mbangleTests/mbangleTests.swift) | Hardware-independent model tests |
 
 ## Tests
 
-The model tests use injected sensors, source factories, clocks, and isolated preferences. They cover calibration persistence, the 104° → 76° conversion, whole-degree target migration, raw-sample calibration, adjustment bounds, direction and tolerance, title fill, and overlapping tray/Option-hold lifetimes. Worker tests exercise delayed and failed reads, session cancellation, reconnection, serialization, and metadata conversion. Freshness follows the acquisition time, so delayed delivery cannot renew an old reading's calibration deadline.
+The model tests use injected sensors, source factories, clocks, and isolated preferences. They cover calibration persistence, the 104° → 76° conversion, whole-degree target migration, raw-sample calibration, adjustment bounds, direction and tolerance, title fill, and overlapping tray/Option-hold lifetimes. Haptic tests cover stable raw/display agreement, jitter suppression, cooldown, target changes, and cancellation across stale readings or closed feedback. These tests verify when a tap is requested, not whether hardware physically delivers it. Worker tests exercise delayed and failed reads, session cancellation, reconnection, serialization, and metadata conversion. Freshness follows the acquisition time, so delayed delivery cannot renew an old reading's calibration deadline.
 
 The UI tests launch explicit Debug-only sensor fixtures with isolated preferences. They exercise the first-launch 76° target, unavailable hardware, calibration, keyboard controls, tray dismissal, and accessible title feedback during Option hold/release without depending on the host Mac's sensor. A relaunch check verifies that fixture target changes do not persist. Normal launches always use real sensor discovery; Release builds do not include the UI-test fixtures.
 

@@ -32,12 +32,20 @@ final class AlignmentStore: ObservableObject {
     @Published private(set) var tolerance: Double
     @Published private(set) var isSensorAvailable: Bool
 
+    /// Emitted once when fresh raw and displayed readings settle on target.
+    /// The app decides whether its current window can deliver a haptic.
+    var onAlignmentReached: (() -> Void)?
+
     private let defaults: UserDefaults
     private let sensor: any AlignmentSensor
     private let now: () -> TimeInterval
     private let automaticallyMonitorFreshness: Bool
     private var lastReadingAt: TimeInterval?
     private var freshnessTimer: Timer?
+    private var hapticGate = AlignmentHapticGate()
+    /// Delivery time is separate from acquisition time: queued samples must
+    /// never cause back-to-back requests when the main thread becomes available.
+    private var lastHapticRequestAt: TimeInterval?
     static let readingLifetime: TimeInterval = 1
     private static let defaultRawTarget = 104.0 // Displayed target: 76°.
     private static let minimumTolerance = 0.5
@@ -86,9 +94,27 @@ final class AlignmentStore: ObservableObject {
                 self.invalidateReading()
                 return
             }
+            if let lastReadingAt = self.lastReadingAt,
+               sampledAt - lastReadingAt >= Self.readingLifetime {
+                self.hapticGate.reset()
+            }
             self.lastReadingAt = sampledAt
             self.isSensorAvailable = true
-            self.angle = 180 - reading
+            let displayedAngle = 180 - reading
+            self.angle = displayedAngle
+            guard let rawAngle = self.sensor.latestRawAngle else {
+                self.hapticGate.reset()
+                return
+            }
+            if self.hapticGate.update(
+                displayedAngle: displayedAngle, rawAngle: rawAngle,
+                target: self.target, tolerance: self.tolerance, at: sampledAt
+            ), self.lastHapticRequestAt.map({
+                receivedAt - $0 >= AlignmentHapticGate.minimumPulseInterval
+            }) ?? true {
+                self.lastHapticRequestAt = receivedAt
+                self.onAlignmentReached?()
+            }
         }
     }
 
@@ -189,6 +215,7 @@ final class AlignmentStore: ObservableObject {
 
     private func startIfNeeded(wasActive: Bool) {
         guard !wasActive else { return }
+        hapticGate.reset()
         angle = nil
         lastReadingAt = nil
         isSensorAvailable = sensor.isAvailable
@@ -204,6 +231,7 @@ final class AlignmentStore: ObservableObject {
 
     private func stopIfInactive() {
         guard !needsReadings else { return }
+        hapticGate.reset()
         freshnessTimer?.invalidate()
         freshnessTimer = nil
         sensor.stop()
@@ -212,6 +240,7 @@ final class AlignmentStore: ObservableObject {
     }
 
     private func invalidateReading() {
+        hapticGate.reset()
         angle = nil
         lastReadingAt = nil
         isSensorAvailable = false
@@ -223,7 +252,11 @@ final class AlignmentStore: ObservableObject {
 
     private func saveRawTarget(_ value: Double) {
         let rawTarget = Self.normalizedRawTarget(value)
-        target = 180 - rawTarget
+        let displayedTarget = 180 - rawTarget
+        if displayedTarget != target {
+            hapticGate.reset()
+        }
+        target = displayedTarget
         defaults.set(rawTarget, forKey: "targetAngle")
     }
 

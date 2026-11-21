@@ -49,6 +49,120 @@ final class mbangleTests: XCTestCase {
         }
     }
 
+    func testAlignmentHapticFiresOnceAcrossOverlappingFeedbackAndStopsWhenHidden() {
+        withClockedStore { store, sensor, clock, _ in
+            var pulses = 0
+            store.onAlignmentReached = { pulses += 1 }
+            store.beginPeek()
+            sensor.send(104)
+            XCTAssertEqual(pulses, 0)
+            clock.time += 0.2
+            sensor.send(104)
+            XCTAssertEqual(pulses, 1)
+            store.show()
+            store.endPeek()
+            clock.time += 0.2
+            sensor.send(104)
+            XCTAssertEqual(pulses, 1, "Opening the tray during a peek must not duplicate the tap.")
+            store.hide()
+            clock.time += 1
+            sensor.send(104)
+            XCTAssertEqual(pulses, 1, "Hidden feedback must ignore sensor callbacks.")
+            store.beginPeek()
+            sensor.send(104)
+            clock.time += 0.2
+            sensor.send(104)
+            XCTAssertEqual(pulses, 2, "A new deliberate peek can confirm an already aligned lid.")
+        }
+    }
+
+    func testAlignmentHapticRequiresRawAgreementAndNewStabilityAfterFailure() {
+        withClockedStore { store, sensor, clock, _ in
+            var pulses = 0
+            store.onAlignmentReached = { pulses += 1 }
+            store.beginPeek()
+            sensor.send(104, rawAngle: 100)
+            clock.time += 0.2
+            sensor.send(104, rawAngle: 100)
+            XCTAssertTrue(store.isOnTarget)
+            XCTAssertEqual(pulses, 0, "Smoothing alone must not confirm physical alignment.")
+            sensor.send(104)
+            clock.time += 0.1
+            sensor.fail()
+            clock.time += 0.2
+            sensor.isAvailable = true
+            sensor.send(104)
+            XCTAssertEqual(pulses, 0)
+            clock.time += 0.2
+            sensor.send(104)
+            XCTAssertEqual(pulses, 1)
+        }
+    }
+
+    func testAlignmentHapticDoesNotAccumulateStabilityAcrossStaleOrMissingRawData() {
+        withClockedStore { store, sensor, clock, _ in
+            var pulses = 0
+            store.onAlignmentReached = { pulses += 1 }
+            store.show()
+            sensor.send(104)
+            clock.time += 1.1 // The watchdog has not run; the callback must detect the gap.
+            sensor.send(104)
+            XCTAssertEqual(pulses, 0)
+            clock.time += 0.1
+            sensor.send(104, rawAngle: nil)
+            clock.time += 0.1
+            sensor.send(104)
+            XCTAssertEqual(pulses, 0)
+            clock.time += 0.2
+            sensor.send(104)
+            XCTAssertEqual(pulses, 1)
+        }
+    }
+
+    func testChangingTargetRestartsHapticStabilityWithoutPulsingOnTheEdit() {
+        withClockedStore { store, sensor, clock, _ in
+            var pulses = 0
+            store.onAlignmentReached = { pulses += 1 }
+            store.show()
+            sensor.send(104)
+            clock.time += 0.1
+            store.adjustTarget(by: -1)
+            XCTAssertEqual(pulses, 0)
+            sensor.send(105)
+            clock.time += 0.1
+            sensor.send(105)
+            XCTAssertEqual(pulses, 0)
+            clock.time += 0.1
+            sensor.send(105)
+            XCTAssertEqual(pulses, 1)
+        }
+    }
+
+    func testQueuedReadingsCannotDeliverBackToBackHapticRequests() {
+        withClockedStore { store, sensor, clock, _ in
+            var pulses = 0
+            store.onAlignmentReached = { pulses += 1 }
+            store.beginPeek()
+            // These readings are all fresh, but reach the main thread together.
+            for (sampledAt, raw) in [(99.01, 104.0), (99.17, 104.0),
+                                     (99.2, 106.0), (99.3, 104.0), (99.93, 104.0)] {
+                sensor.latestSampleTime = sampledAt
+                sensor.send(raw)
+            }
+            XCTAssertEqual(clock.time, 100)
+            XCTAssertEqual(pulses, 1, "Acquisition times alone must not allow two simultaneous requests.")
+            store.endPeek()
+            clock.time += 1.1
+            store.beginPeek()
+            sensor.latestSampleTime = clock.time
+            sensor.send(104)
+            clock.time += 0.2
+            sensor.latestSampleTime = clock.time
+            sensor.send(104)
+            XCTAssertEqual(pulses, 2)
+        }
+    }
+
     func testSilenceExpiresTheReadingAndClearsPublishedAngle() {
         withClockedStore { store, sensor, clock, _ in
             store.beginPeek()
