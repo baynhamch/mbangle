@@ -112,4 +112,6 @@ These tests exercise the app's logic without requiring a lid-angle sensor. Befor
 
 ## Acknowledgments
 
-The sensor implementation is adapted from Sam Gold's [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor). See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution and license details.
+Sam Gold's [LidAngleSensor](https://github.com/samhenrigold/LidAngleSensor) inspired the live angle-sensing integration. The sensor reader is also adapted from his Apache-2.0-licensed implementation. This credit identifies the source of that component; it does not imply collaboration or endorsement.
+
+The showcase interface, calibration controls, and title feedback were developed for mbangle. See [third-party notices](THIRD_PARTY_NOTICES.md) for attribution and license details.
